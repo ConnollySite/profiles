@@ -240,12 +240,21 @@ function saveCache() { lsSet(cacheKey(), { employees: S.employees, entries: S.en
 const outbox = () => lsGet(LS_OUTBOX, []);
 
 /* ================= Network ================= */
+function netErr(e) {
+  const m = e && e.message;
+  if (m === 'NOT_DATA') return 'The link answered with a web page, not data. In Apps Script: Deploy > Manage deployments > pencil > Who has access = Anyone, Execute as = Me > New version.';
+  if (m === 'BAD_REPLY') return 'The link answered with something unexpected. Check that it is the Profiles /exec link.';
+  if (m === 'No backend URL') return 'No backend link saved yet.';
+  return 'Could not reach the link (' + (m || 'network') + '). Check the link, the internet, and that the deployment is "Anyone".';
+}
 const AUTH_ERRORS = /^(Incorrect PIN|Unknown supervisor|No PIN set|Too many wrong PINs)/;
 async function api(action, payload) {
   if (!S.url) throw new Error('No backend URL');
   const body = Object.assign({ user: S.cred && S.cred.user, pin: S.cred && S.cred.pin, action: action }, payload || {});
   const res = await fetch(S.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
-  const j = await res.json();
+  const text = await res.text();
+  let j;
+  try { j = JSON.parse(text); } catch (e) { throw new Error(/<\s*(html|!doctype)/i.test(text) ? 'NOT_DATA' : 'BAD_REPLY'); }
   if (j && j.error && AUTH_ERRORS.test(j.error) && action !== 'login') { logout(j.error); throw new Error(j.error); }
   return j;
 }
@@ -405,7 +414,7 @@ function renderLogin(app) {
       const r = await api('login');
       if (r && r.ok) { lsSet(LS_URL, S.url); lsSet(LS_CRED, S.cred); lsSet('profiles_last_user', S.cred.user); S.users = r.users || S.users; stack = []; tab = 'people'; loadCache(); render(); refresh(true); return; }
       S.cred = null; err.textContent = (r && r.error) || 'Could not sign in';
-    } catch (e) { S.cred = null; if (!lsGet(LS_URL, '')) S.url = ''; err.textContent = 'Could not reach the backend. Check the link and your connection.'; }
+    } catch (e) { S.cred = null; if (!lsGet(LS_URL, '')) S.url = ''; err.textContent = netErr(e); }
     $('lgBtn').disabled = false;
   };
   const ch = $('lgChangeUrl');
@@ -504,7 +513,7 @@ function renderImport(app) {
     try {
       const r = await api('importEmployees', { list: list });
       if (r && r.ok) { toast(r.added + ' added, ' + r.skipped + ' already there', 3500); await refresh(true); back(); } else toast((r && r.error) || 'Import failed');
-    } catch (e) { toast('Needs a connection to import'); }
+    } catch (e) { toast(netErr(e), 7000); }
   };
   $('impGo').onclick = () => send(parse());
   $('impSeed').onclick = () => send(SEED_EMPLOYEES.map(n => ({ name: n })));
@@ -532,7 +541,7 @@ function renderEmployeeEdit(app, p) {
     try {
       const r = await api('saveEmployee', { employee: emp });
       if (r && r.ok) { toast('Saved'); await refresh(true); back(); } else toast((r && r.error) || 'Could not save');
-    } catch (err) { toast('Needs a connection to save'); }
+    } catch (err) { toast(netErr(err), 7000); }
   };
 }
 
@@ -739,7 +748,7 @@ function renderEntry(app, p) {
   app.innerHTML = h;
   if ($('enPdf')) $('enPdf').onclick = async () => {
     let sig = '';
-    if (!d.refused) { try { const r = await api('getSig', { id: e.id }); sig = (r && r.image) || ''; } catch (err) { toast('Needs a connection to load the signature'); return; } }
+    if (!d.refused) { try { const r = await api('getSig', { id: e.id }); sig = (r && r.image) || ''; } catch (err) { toast(netErr(err), 7000); return; } }
     lastPdf = { entry: e, sig: sig, refused: !!d.refused };
     showPdfSheet(def, e, true);
   };
@@ -748,7 +757,7 @@ function renderEntry(app, p) {
   $('enDel').onclick = async () => {
     if (!armed) { armed = true; $('enDel').textContent = 'Tap again to delete'; setTimeout(() => { armed = false; if ($('enDel')) $('enDel').textContent = 'Delete'; }, 3000); return; }
     try { const r = await api('deleteEntry', { id: e.id }); if (r && r.ok) { toast('Deleted'); await refresh(true); back(); } else toast((r && r.error) || 'Could not delete'); }
-    catch (err) { toast('Needs a connection to delete'); }
+    catch (err) { toast(netErr(err), 7000); }
   };
 }
 function displayVal(f, v) {
