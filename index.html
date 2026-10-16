@@ -314,6 +314,7 @@ function logout(msg) {
 }
 
 /* ================= Data helpers ================= */
+const dispName = e => { const n = String(e.name || '').trim(), b = String(e.badge || '').trim(); return (!b || /\(\s*\d+\s*\)\s*$/.test(n)) ? n : n + ' (' + b + ')'; };
 const empById = id => S.employees.find(e => e.id === id);
 const entriesFor = id => S.entries.filter(e => e.employeeIds.indexOf(id) >= 0).sort(cmpEntryDesc);
 function cmpEntryDesc(a, b) { return ((b.date || '') + (b.time || '') + (b.created || '')).localeCompare((a.date || '') + (a.time || '') + (a.created || '')); }
@@ -440,7 +441,7 @@ function personItem(e) {
   const c = counts(e.id);
   const chips = (c.VERBAL ? '<span class="chip warn">Verbal ' + c.VERBAL + '</span>' : '') + (c.WRITTEN ? '<span class="chip bad">Written ' + c.WRITTEN + '</span>' : '') + probChip(e);
   const last = entriesFor(e.id)[0];
-  return '<button class="item" data-go="profile" data-id="' + esc(e.id) + '"><div class="nm">' + esc(e.name) + '</div><div class="sb">' + esc([e.team, e.badge && ('#' + e.badge)].filter(Boolean).join(' · ')) + (last ? ((e.team || e.badge) ? ' · ' : '') + 'last: ' + esc(shortDate(last.date)) : '') + '</div>' + (chips ? '<div style="margin-top:6px">' + chips + '</div>' : '') + '</button>';
+  return '<button class="item" data-go="profile" data-id="' + esc(e.id) + '"><div class="nm">' + esc(dispName(e)) + '</div><div class="sb">' + esc([e.team].filter(Boolean).join(' · ')) + (last ? (e.team ? ' · ' : '') + 'last: ' + esc(shortDate(last.date)) : '') + '</div>' + (chips ? '<div style="margin-top:6px">' + chips + '</div>' : '') + '</button>';
 }
 function bindItems(root) {
   [].forEach.call(root.querySelectorAll('[data-go]'), b => {
@@ -456,7 +457,7 @@ function renderProbation(app) {
   if (!list.length) h = '<div class="card"><div class="empty">Nobody is marked as in probation. Open a profile and set the probation dates to track someone here.</div></div>';
   list.forEach(e => {
     const revs = entriesFor(e.id).filter(x => x.type === 'PROBATION');
-    h += '<div class="card"><div class="nm" style="font-weight:800;font-size:16px">' + esc(e.name) + '</div><div class="sb" style="font-size:12px;color:var(--sub);margin:3px 0 8px">' +
+    h += '<div class="card"><div class="nm" style="font-weight:800;font-size:16px">' + esc(dispName(e)) + '</div><div class="sb" style="font-size:12px;color:var(--sub);margin:3px 0 8px">' +
       (e.probStart ? 'Started ' + esc(fmtDate(e.probStart)) : 'Start date not set') + (e.probEnd ? ' · ends ' + esc(fmtDate(e.probEnd)) : '') + ' · ' + revs.length + ' review' + (revs.length === 1 ? '' : 's') +
       (revs[0] ? ' (last ' + esc(shortDate(revs[0].date)) + ')' : '') + '</div>' + probChip(e) +
       '<div class="row" style="margin-top:8px"><button class="btn small" data-rev="' + esc(e.id) + '">New review</button><button class="btn small ghost" data-go="profile" data-id="' + esc(e.id) + '">Open profile</button></div></div>';
@@ -522,7 +523,7 @@ function renderImport(app) {
 /* ================= Employee add / edit ================= */
 function renderEmployeeEdit(app, p) {
   const e = p.id ? empById(p.id) : null;
-  setHeader(e ? 'Edit employee' : 'New employee', e ? e.name : '', true);
+  setHeader(e ? 'Edit employee' : 'New employee', e ? dispName(e) : '', true);
   const v = e || { name: '', badge: '', team: '', status: 'active', probStart: '', probEnd: '', probStatus: '', notes: '' };
   app.innerHTML = '<div class="card">' +
     '<div class="field"><label>Full name</label><input type="text" id="emName" value="' + esc(v.name) + '"></div>' +
@@ -546,10 +547,53 @@ function renderEmployeeEdit(app, p) {
 }
 
 /* ================= Profile ================= */
+/* ================= Uniform ================= */
+const UNIFORM = [['winter_hat', 'Winter hat'], ['gloves', 'Protective gloves'], ['winter_jacket', 'Winter jacket'], ['softshell', 'Soft shell jacket'], ['hivis_vest', 'Hi Vis soft vest'], ['stab_vest', 'Stab vest'], ['combats', 'Combats'], ['polo', 'Polo'], ['safety_shoes', 'Safety shoes'], ['earpiece', 'Earpiece'], ['other', 'Other']];
+const uniOpen = {};
+function uniParse(e) { try { const j = JSON.parse(e.uniform || '{}'); return { items: j.items || {}, by: j.by || '' }; } catch (x) { return { items: {}, by: '' }; } }
+function uniCount(e) { const it = uniParse(e).items; return Object.keys(it).filter(k => it[k].on).length; }
+function todayIso() { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function uniformCard(e) {
+  const u = uniParse(e), n = uniCount(e), open = !!uniOpen[e.id];
+  let h = '<div class="card"><button class="btn ghost" id="uniToggle" style="text-align:left;display:flex;justify-content:space-between;align-items:center"><span>Uniform' + (n ? ' · ' + n + ' issued' : '') + '</span><span>' + (open ? '▲' : '▼') + '</span></button>';
+  if (open) {
+    h += '<div style="margin-top:12px">' + UNIFORM.map(x => {
+      const it = u.items[x[0]] || {};
+      return '<div class="uni" data-k="' + x[0] + '" style="padding:10px 0;border-bottom:1px solid var(--line)">' +
+        '<label style="display:flex;gap:10px;align-items:center;font-weight:800"><input type="checkbox" class="uOn" style="width:22px;height:22px"' + (it.on ? ' checked' : '') + '> ' +
+        (x[0] === 'other' ? '<input type="text" class="uName" placeholder="Item name" value="' + esc(it.name || '') + '" style="flex:1">' : esc(x[1])) +
+        '<span class="uDate" style="margin-left:auto;font-weight:400;font-size:12px;color:var(--sub)">' + (it.date ? esc(fmtDate(it.date)) : '') + '</span></label>' +
+        '<div class="grid2" style="margin-top:6px"><input type="text" class="uSize" placeholder="Size" value="' + esc(it.size || '') + '"><input type="text" class="uCom" placeholder="Comment" value="' + esc(it.comment || '') + '"></div></div>';
+    }).join('') + '<div class="sync" style="margin:8px 0">' + (u.by ? 'Last saved ' + esc(u.by) : 'Nothing saved yet') + '</div><button class="btn" id="uniSave">Save uniform</button></div>';
+  }
+  return h + '</div>';
+}
+function bindUniform(app, e) {
+  $('uniToggle').onclick = () => { uniOpen[e.id] = !uniOpen[e.id]; render(); };
+  const sv = $('uniSave'); if (!sv) return;
+  const rows = [].slice.call(app.querySelectorAll('.uni'));
+  const prev = uniParse(e).items;
+  rows.forEach(r => { r.querySelector('.uOn').onchange = ev => { const k = r.getAttribute('data-k'); const d = (prev[k] && prev[k].date) || todayIso(); r.querySelector('.uDate').textContent = ev.target.checked ? fmtDate(d) : ''; }; });
+  sv.onclick = async () => {
+    const items = {};
+    rows.forEach(r => {
+      const k = r.getAttribute('data-k'), on = r.querySelector('.uOn').checked;
+      const nm = r.querySelector('.uName'), it = { on: on ? 1 : 0, size: r.querySelector('.uSize').value, comment: r.querySelector('.uCom').value, date: on ? ((prev[k] && prev[k].date) || todayIso()) : '' };
+      if (nm) it.name = nm.value; items[k] = it;
+    });
+    sv.disabled = true;
+    try {
+      const r = await api('saveUniform', { id: e.id, uniform: { items: items } });
+      if (r && r.ok) { e.uniform = r.uniform; saveCache(); toast('Uniform saved'); render(); } else toast((r && r.error) || 'Could not save');
+    } catch (err) { toast(netErr(err), 7000); }
+    sv.disabled = false;
+  };
+}
+
 function renderProfile(app, p) {
   const e = empById(p.id);
   if (!e) { back(); return; }
-  setHeader(e.name, [e.team, e.badge && ('#' + e.badge), e.status === 'left' ? 'left the company' : ''].filter(Boolean).join(' · ') || 'Profile', true);
+  setHeader(dispName(e), [e.team, e.status === 'left' ? 'left the company' : ''].filter(Boolean).join(' · ') || 'Profile', true);
   const c = counts(e.id);
   const hint = escalationHint(c);
   const list = entriesFor(e.id);
@@ -557,12 +601,14 @@ function renderProfile(app, p) {
     '<div class="sync" style="margin-top:6px">Last 12 months: ' + c.y.COUNSELING + ' counseling · ' + c.y.VERBAL + ' verbal · ' + c.y.WRITTEN + ' written</div>' +
     (hint ? '<div class="hintbox">' + esc(hint) + '</div>' : '') + (probChip(e) ? '<div style="margin-top:12px">' + probChip(e) + (e.probEnd ? '<span class="sb" style="font-size:12px;color:var(--sub)"> ends ' + esc(fmtDate(e.probEnd)) + '</span>' : '') + '</div>' : '') + '</div>' +
     '<div class="card"><h2>New</h2><div class="grid2">' + TYPE_ORDER.map(t => '<button class="btn ghost" data-new="' + t + '" style="font-size:13.5px">' + esc(FORMS[t].label) + '</button>').join('') + '</div><div style="height:10px"></div><button class="btn small ghost" id="prEdit">Edit employee details</button></div>';
+  h += uniformCard(e);
   h += '<div class="card"><h2>History (' + list.length + ')</h2>' + (list.length ? '<div class="tl">' + list.map(x => entryItem(x, false)).join('') + '</div>' : '<div class="empty">No records yet.</div>') + '</div>';
   if (e.notes) h += '<div class="card"><h2>Notes</h2><div class="kv"><div class="v">' + esc(e.notes) + '</div></div></div>';
   app.innerHTML = h;
   bindItems(app);
   [].forEach.call(app.querySelectorAll('[data-new]'), b => { b.onclick = () => go('form', { type: b.getAttribute('data-new'), empId: e.id }); });
   $('prEdit').onclick = () => go('employee', { id: e.id });
+  bindUniform(app, e);
 }
 
 /* ================= Form (new / edit) ================= */
@@ -575,7 +621,7 @@ function renderForm(app, p) {
   const editing = p.entryId ? S.entries.find(x => x.id === p.entryId) : null;
   const emp = empById(p.empId || (editing && editing.employeeIds[0]));
   if (!emp) { back(); return; }
-  setHeader(def.label, (editing ? 'Editing · ' : '') + emp.name, true);
+  setHeader(def.label, (editing ? 'Editing · ' : '') + dispName(emp), true);
 
   // initial values
   let vals = {};
@@ -596,7 +642,7 @@ function renderForm(app, p) {
   h += '<div id="fldBox"></div>';
   h += '</div>';
   if (def.sig) {
-    h += '<div class="card"><h2>Employee signature</h2><div id="sigArea"><div class="sig-shell"><canvas id="sigCv"></canvas><div class="sig-ph" id="sigPh">Hand the phone to ' + esc(emp.name) + ' to sign with a finger</div></div><div class="row" style="margin-top:10px"><span class="hint" style="margin:0">Signing as: <b>' + esc(emp.name) + '</b></span><button class="btn small ghost" id="sigClear" type="button" style="flex:none">Clear</button></div></div>' +
+    h += '<div class="card"><h2>Employee signature</h2><div id="sigArea"><div class="sig-shell"><canvas id="sigCv"></canvas><div class="sig-ph" id="sigPh">Hand the phone to ' + esc(dispName(emp)) + ' to sign with a finger</div></div><div class="row" style="margin-top:10px"><span class="hint" style="margin:0">Signing as: <b>' + esc(dispName(emp)) + '</b></span><button class="btn small ghost" id="sigClear" type="button" style="flex:none">Clear</button></div></div>' +
       '<label style="margin-top:14px;display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" id="refused" style="width:auto"> Employee declined / was unable to sign</label><div id="witBox" class="field hidden" style="margin-top:10px"><label>Witness (name)</label><input type="text" id="witness" placeholder="Who was present"></div>' +
       (def.attest ? '<div class="hintbox">' + esc(def.attest) + '</div>' : '') + '</div>';
   }
