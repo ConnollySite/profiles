@@ -350,7 +350,8 @@ function entrySummary(e) {
 }
 function entryTitle(e) {
   const f = FORMS[e.type]; let t = f ? f.label : e.type;
-  if (e.type === 'NOTE') t = (e.data && e.data.kind === 'positive' ? '★ Positive' : '⚠ Fault') + (e.category ? ' · ' + e.category : '');
+  if (e.type === 'NOTE' && e.source === 'calendar') t = '📅 Calendar';
+  else if (e.type === 'NOTE') t = (e.data && e.data.kind === 'positive' ? '★ Positive' : '⚠ Fault') + (e.category ? ' · ' + e.category : '');
   if (e.type === 'WRITTEN' && e.data && e.data.level) t = e.data.level;
   if (e.type === 'PROBATION' && e.data && e.data.review) t = 'Probation · ' + e.data.review;
   return t;
@@ -788,7 +789,7 @@ function renderEntry(app, p) {
     if (d.refused) rows += '<div class="kv"><b>Signature</b><div class="v">Employee declined / unable to sign. Witness: ' + esc(d.witness) + '</div></div>';
     if (d.prior) rows += '<div class="kv"><b>On file before</b><div class="v">' + d.prior.COUNSELING + ' counseling · ' + d.prior.VERBAL + ' verbal · ' + d.prior.WRITTEN + ' written</div></div>';
   }
-  rows += '<div class="kv"><b>Logged by</b><div class="v">' + esc(e.author) + (e.updatedBy && e.updatedBy !== e.author ? ' (last edited by ' + esc(e.updatedBy) + ')' : '') + (e.source === 'checkpoints' ? ' · from Check Points' : '') + '</div></div>';
+  rows += '<div class="kv"><b>Logged by</b><div class="v">' + esc(e.author) + (e.updatedBy && e.updatedBy !== e.author ? ' (last edited by ' + esc(e.updatedBy) + ')' : '') + (e.source === 'calendar' ? ' · from the Calendar' : '') + (e.source === 'checkpoints' ? ' · from Check Points' : '') + '</div></div>';
   let h = '<div class="card">' + rows + '</div><div class="card">';
   if (def && def.pdf) h += '<button class="btn" id="enPdf">PDF</button><div style="height:10px"></div>';
   h += '<button class="btn ghost" id="enEdit">Edit</button><div style="height:10px"></div><button class="btn danger" id="enDel">Delete</button><div class="sync" id="enDelHint">Tap Delete twice. Deleted records are kept in the sheet history.</div></div>';
@@ -799,7 +800,7 @@ function renderEntry(app, p) {
     lastPdf = { entry: e, sig: sig, refused: !!d.refused };
     showPdfSheet(def, e, true);
   };
-  $('enEdit').onclick = () => { if (e.pending) { toast('Wait until it has uploaded'); return; } stack.pop(); go('form', { type: e.type, entryId: e.id, empId: e.employeeIds[0] }); };
+  $('enEdit').onclick = () => { if (e.source === 'calendar') { toast('Edit this one in the Period Calendar (hub)', 4000); return; } if (e.pending) { toast('Wait until it has uploaded'); return; } stack.pop(); go('form', { type: e.type, entryId: e.id, empId: e.employeeIds[0] }); };
   let armed = false;
   $('enDel').onclick = async () => {
     if (!armed) { armed = true; $('enDel').textContent = 'Tap again to delete'; setTimeout(() => { armed = false; if ($('enDel')) $('enDel').textContent = 'Delete'; }, 3000); return; }
