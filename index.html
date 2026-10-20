@@ -413,11 +413,12 @@ function renderFormsTab(app) {
   if (formsEmp) {
     const mine = S.entries.filter(x => DOC_PREFIX[x.type] && x.employeeIds.indexOf(formsEmp) >= 0).sort(byDate);
     h += '<div class="card"><h2>Documents of this person (' + mine.length + ')</h2>' + (mine.length ? '<div class="tl">' + mine.map(x => entryItem(x, false)).join('') + '</div>' : '<div class="empty">No documents yet.</div>') + '</div>';
-    h += '<div class="card"><h2>New form</h2><div class="grid2">' + TYPE_ORDER.filter(t => t !== 'NOTE').map(t => '<button class="btn ghost" data-new="' + t + '" style="font-size:13.5px">' + esc(FORMS[t].label) + '</button>').join('') + '</div></div>';
   } else {
     const docs = S.entries.filter(x => DOC_PREFIX[x.type]).sort(byDate).slice(0, 15);
     h += '<div class="card"><h2>Latest documents</h2>' + (docs.length ? '<div class="tl">' + docs.map(x => entryItem(x, true)).join('') + '</div>' : '<div class="empty">No documents yet.</div>') + '</div>';
   }
+  const newCard = '<div class="card"><h2>New form</h2>' + (formsEmp ? '' : '<div class="hint" style="margin:0 0 8px">Choose the person above first.</div>') + '<div class="grid2">' + TYPE_ORDER.filter(t => t !== 'NOTE').map(t => '<button class="btn ghost" data-new="' + t + '" style="font-size:13.5px' + (formsEmp ? '' : ';opacity:.5') + '">' + esc(FORMS[t].label) + '</button>').join('') + '</div></div>';
+  const cut = h.indexOf('</div></div>') + 12; h = h.slice(0, cut) + newCard + h.slice(cut);
   app.innerHTML = h;
   bindItems(app);
   const who = () => { const e = empById(formsEmp); $('fmWho').innerHTML = e ? 'Linked to the profile of <b>' + esc(dispName(e)) + '</b>. The document and its number will show in that history.' : 'The form is saved in the profile of the person you choose.'; };
