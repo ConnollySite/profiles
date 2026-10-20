@@ -236,7 +236,7 @@ const TYPE_CHIP = { NOTE: 'blue', COUNSELING: 'blue', VERBAL: 'warn', WRITTEN: '
 const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwIlCX1TCTRSwmyMY83gCqmGd4IvDpUT0PJ5phhrHe0hUCFPvL3q_Xiv3pv_76hP5plbw/exec';
 let S = { url: BACKEND_URL, cred: lsGet(LS_CRED, null), users: DEFAULT_USERS.slice(), employees: [], entries: [], syncedAt: '', busy: false };
 let stack = [];            // navigation: [{view, p}]
-let tab = 'people';
+let tab = (/[?&]tab=forms\b/.test(location.search) ? 'forms' : 'people');
 let filters = { q: '', type: 'all', act: 'all' };
 
 const cacheKey = () => LS_CACHE;
@@ -402,21 +402,27 @@ function render() {
 /* ================= Forms tab (outside the profiles) ================= */
 let formsEmp = '', formsQ = '';
 function renderFormsTab(app) {
-  setHeader('Forms', 'Pick the employee, then the form', false);
+  setHeader('Forms', 'Pick the employee: you see only what they have', false);
   const emps = S.employees.filter(e => e.status !== 'left').sort((a, b) => a.name.localeCompare(b.name));
   const q = normName(formsQ);
   const list = emps.filter(e => !q || normName(dispName(e)).indexOf(q) >= 0 || e.id === formsEmp);
   let h = '<div class="card"><h2>Employee</h2><input type="search" id="fmQ" placeholder="Type a name or staff number to narrow the list…" value="' + esc(formsQ) + '" autocomplete="off" style="margin-bottom:8px">' +
     '<select id="fmEmp"><option value="">— Choose employee (' + list.length + ') —</option>' + list.map(e => '<option value="' + esc(e.id) + '"' + (e.id === formsEmp ? ' selected' : '') + '>' + esc(dispName(e)) + (e.team ? ' · ' + esc(e.team) : '') + '</option>').join('') + '</select>' +
     '<div class="sync" id="fmWho" style="margin-top:8px"></div></div>';
-  h += '<div class="card"><h2>Form</h2><div class="grid2">' + TYPE_ORDER.map(t => '<button class="btn ghost" data-new="' + t + '" style="font-size:13.5px">' + esc(FORMS[t].label) + '</button>').join('') + '</div></div>';
-  const docs = S.entries.filter(x => docNoOf(x)).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).slice(0, 15);
-  h += '<div class="card"><h2>Latest documents</h2>' + (docs.length ? '<div class="tl">' + docs.map(x => entryItem(x, true)).join('') + '</div>' : '<div class="empty">No numbered documents yet.</div>') + '</div>';
+  const byDate = (a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+  if (formsEmp) {
+    const mine = S.entries.filter(x => DOC_PREFIX[x.type] && x.employeeIds.indexOf(formsEmp) >= 0).sort(byDate);
+    h += '<div class="card"><h2>Documents of this person (' + mine.length + ')</h2>' + (mine.length ? '<div class="tl">' + mine.map(x => entryItem(x, false)).join('') + '</div>' : '<div class="empty">No documents yet.</div>') + '</div>';
+    h += '<div class="card"><h2>New form</h2><div class="grid2">' + TYPE_ORDER.filter(t => t !== 'NOTE').map(t => '<button class="btn ghost" data-new="' + t + '" style="font-size:13.5px">' + esc(FORMS[t].label) + '</button>').join('') + '</div></div>';
+  } else {
+    const docs = S.entries.filter(x => DOC_PREFIX[x.type]).sort(byDate).slice(0, 15);
+    h += '<div class="card"><h2>Latest documents</h2>' + (docs.length ? '<div class="tl">' + docs.map(x => entryItem(x, true)).join('') + '</div>' : '<div class="empty">No documents yet.</div>') + '</div>';
+  }
   app.innerHTML = h;
   bindItems(app);
   const who = () => { const e = empById(formsEmp); $('fmWho').innerHTML = e ? 'Linked to the profile of <b>' + esc(dispName(e)) + '</b>. The document and its number will show in that history.' : 'The form is saved in the profile of the person you choose.'; };
   who();
-  $('fmEmp').onchange = () => { formsEmp = $('fmEmp').value; who(); };
+  $('fmEmp').onchange = () => { formsEmp = $('fmEmp').value; renderFormsTab(app); };
   $('fmQ').oninput = () => { formsQ = $('fmQ').value; const pos = $('fmQ').selectionStart; renderFormsTab(app); const n = $('fmQ'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (er) {} };
   [].forEach.call(app.querySelectorAll('[data-new]'), b => { b.onclick = () => { if (!formsEmp) { toast('Choose the employee first'); return; } go('form', { type: b.getAttribute('data-new'), empId: formsEmp }); }; });
 }
@@ -630,13 +636,12 @@ function renderProfile(app, p) {
   let h = '<div class="card"><div class="stat"><div><b>' + c.COUNSELING + '</b><span>Counseling</span></div><div><b>' + c.VERBAL + '</b><span>Verbal</span></div><div><b>' + c.WRITTEN + '</b><span>Written</span></div></div>' +
     '<div class="sync" style="margin-top:6px">Last 12 months: ' + c.y.COUNSELING + ' counseling · ' + c.y.VERBAL + ' verbal · ' + c.y.WRITTEN + ' written</div>' +
     (hint ? '<div class="hintbox">' + esc(hint) + '</div>' : '') + (probChip(e) ? '<div style="margin-top:12px">' + probChip(e) + (e.probEnd ? '<span class="sb" style="font-size:12px;color:var(--sub)"> ends ' + esc(fmtDate(e.probEnd)) + '</span>' : '') + '</div>' : '') + '</div>' +
-    '<div class="card"><h2>Forms</h2><div class="hint" style="margin:0 0 10px">Forms are filled in from the Forms tab. Every document is saved here in the history with its number (numbers are given when it uploads).</div><button class="btn" id="prForms">New form for this person</button><div style="height:10px"></div><button class="btn small ghost" id="prEdit">Edit employee details</button></div>';
+    '<div class="card"><button class="btn small ghost" id="prEdit">Edit employee details</button></div>';
   h += uniformCard(e);
   h += '<div class="card"><h2>History (' + list.length + ')</h2>' + (list.length ? '<div class="tl">' + list.map(x => entryItem(x, false)).join('') + '</div>' : '<div class="empty">No records yet.</div>') + '</div>';
   if (e.notes) h += '<div class="card"><h2>Notes</h2><div class="kv"><div class="v">' + esc(e.notes) + '</div></div></div>';
   app.innerHTML = h;
   bindItems(app);
-  $('prForms').onclick = () => { formsEmp = e.id; tab = 'forms'; stack = []; render(); window.scrollTo(0, 0); };
   $('prEdit').onclick = () => go('employee', { id: e.id });
   bindUniform(app, e);
 }
