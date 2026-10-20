@@ -59,6 +59,9 @@
   .seg input:checked+span{background:var(--navy);color:#fff;border-color:var(--navy);}
   .rate{display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:12px;}
   .rate .rn{font-weight:700;font-size:13px;}
+  .chk-list{margin-top:4px;}
+  .chk{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;margin:0 0 6px;background:#F8FAFC;font-weight:600;font-size:14px;cursor:pointer;}
+  .chk input{width:auto;margin-top:3px;flex:none;}
   .stepper{display:flex;align-items:center;border:1.5px solid var(--line);border-radius:10px;background:#F8FAFC;overflow:hidden;width:max-content;}
   .stepper button{width:42px;height:44px;border:none;background:transparent;font-size:19px;color:var(--navy);font-weight:700;cursor:pointer;}
   .stepper input{width:48px;text-align:center;border:none;background:transparent;font-size:16px;font-weight:800;padding:0;}
@@ -160,6 +163,20 @@ function toast(msg, ms) { const t = $('toast'); t.textContent = msg; t.classList
 
 /* ================= Form definitions ================= */
 const YN = [['yes', 'Yes'], ['no', 'No']];
+const TEAMS = ["Balbriggan Line", "Belfast Line", "Bray Static", "Car Alpha", "Car Bravo", "Central", "Connolly Days", "Connolly Nights", "Day North", "Day South", "Extra Shift", "Howth Static", "Kilbarrack", "Maynooth Line", "North Alpha", "North Bravo", "North Charlie", "North East", "North West", "Northern", "Pelletstown", "Platform", "Sidings", "Sligo Line", "South Alpha", "South Bravo", "Tara Street"];
+const CONCERNS = ["Lateness", "Leaving earlier (Abandonment of Post - serious misconduct)", "Taking longer Break", "Not following Instructions", "Not following Patrol Plan", "Use of Earphones", "Excessive time on personal phone", "Not wearing PPE", "Not Answering Calls", "Communication Issues", "Uniform nonconformity", "Poor Performance", "Sitting", "Not Supporting Partner", "Not sending Incident Reports"];
+const teamOf = d => d.team === '__other__' ? (d.teamOther || 'Other') : (d.team || '');
+const catsOf = d => (Array.isArray(d.cats) ? d.cats : []).map(c => c === '__other__' ? (d.catsOther || 'Other') : c).join(', ');
+const headFields = o => [
+  { k: 'date', t: 'date', l: o.dateLabel || 'Date', req: 1 },
+  { k: 'time', t: 'time', l: 'Time', req: o.timeReq ? 1 : 0 },
+  { k: 'location', t: 'text', l: 'Location', req: o.locReq ? 1 : 0, ph: o.locPh || 'e.g. Platform 2, Concourse, Ticket Hall…' },
+  { k: 'team', t: 'select', l: 'Team', opts: [['', 'Select team…']].concat(TEAMS.map(t => [t, t]), [['__other__', 'Other…']]) },
+  { k: 'teamOther', t: 'text', l: 'Please specify team', ph: 'Team name', showIf: d => d.team === '__other__' }];
+const catFields = [
+  { k: 'cats', t: 'checks', l: 'Concern to be addressed — select all that apply', opts: CONCERNS.map(c => [c, c]).concat([['__other__', 'Other']]), req: 1 },
+  { k: 'catsOther', t: 'text', l: 'Please specify', ph: 'Describe the concern…', showIf: d => Array.isArray(d.cats) && d.cats.indexOf('__other__') >= 0 }];
+const retrainField = { k: 'retraining', t: 'select', l: 'Retraining needed', opts: [['', 'Select…'], ['Yes', 'Yes'], ['No', 'No']] };
 const FORMS = {
   NOTE: { label: 'Note', title: 'Supervisor note', sig: false, pdf: false, fields: [
     { k: 'kind', t: 'radio', l: 'Type', opts: [['fault', '⚠ Fault'], ['positive', '★ Positive']], def: 'fault', req: 1 },
@@ -169,38 +186,38 @@ const FORMS = {
   COUNSELING: { label: 'Informal Counseling', title: 'INFORMAL COUNSELING', sig: true, pdf: true,
     attest: 'By signing, the employee acknowledges this discussion took place and that they received a copy of the actions above. This is not a disciplinary warning.',
     fields: [
-    { k: 'date', t: 'date', l: 'Date', req: 1 },
-    { k: 'concern', t: 'textarea', l: 'Concern to be addressed', req: 1, ph: 'Describe what happened, where, and when…' },
+    ...headFields({}), ...catFields,
+    { k: 'concern', t: 'textarea', l: 'Details', req: 1, ph: 'Describe what happened, where, and when…' },
     { k: 'recur', t: 'stepper', l: 'Recurrent — how many times has this happened?', def: 1 },
+    { k: 'recurTbc', t: 'check', l: 'Recurrence: to be confirmed' },
     { k: 'actionsEmployee', t: 'textarea', l: 'Actions to be taken by the employee', req: 1, ph: 'What the employee commits to changing…', pl: 'Actions to be taken by employee to ensure improvement' },
     { k: 'actionsEmployer', t: 'textarea', l: 'Actions to be taken by the company', req: 1, ph: 'Support, monitoring, or follow-up the company will provide…', pl: 'Actions to be taken by the company to ensure improvement' },
-    { k: 'supervisor', t: 'user', l: 'Supervisor', req: 1 }] },
-  VERBAL: { label: 'Verbal Warning', title: 'VERBAL WARNING', sig: true, pdf: true, warn: true,
+    { k: 'supervisor', t: 'user', l: 'Supervisor', req: 1 }, retrainField] },
+  VERBAL: { label: 'Verbal Warning', title: 'VERBAL WARNING', sig: true, pdf: true, mgr: true, warn: true,
     attest: 'The employee has the right to be accompanied by a colleague or representative and to appeal this warning to the Line Manager. By signing, the employee acknowledges receipt of this warning; it does not mean they agree with it.',
     fields: [
-    { k: 'date', t: 'date', l: 'Date', req: 1 },
+    ...headFields({}), ...catFields,
     { k: 'concern', t: 'textarea', l: 'Details of the incident / conduct', req: 1, ph: 'What happened, where, when, who was present…' },
     { k: 'standard', t: 'textarea', l: 'Standard / policy not met', ph: 'The rule, procedure or instruction that was not followed…' },
     { k: 'improvement', t: 'textarea', l: 'Improvement required', req: 1, ph: 'What must change, and by when…' },
     { k: 'consequence', t: 'textarea', l: 'Consequence if it is repeated', req: 1, def: 'Further breaches may lead to a written warning and further disciplinary action.' },
     { k: 'comments', t: 'textarea', l: "Employee's comments", ph: 'Optional' },
-    { k: 'supervisor', t: 'user', l: 'Supervisor', req: 1 }] },
-  WRITTEN: { label: 'Written Warning', title: 'WRITTEN WARNING', sig: true, pdf: true, warn: true,
+    { k: 'supervisor', t: 'user', l: 'Supervisor', req: 1 }, retrainField] },
+  WRITTEN: { label: 'Written Warning', title: 'WRITTEN WARNING', sig: true, pdf: true, mgr: true, warn: true,
     attest: 'The employee has the right to be accompanied by a colleague or representative and to appeal this warning to the Line Manager. By signing, the employee acknowledges receipt of this warning; it does not mean they agree with it.',
     fields: [
     { k: 'level', t: 'select', l: 'Level', opts: ['Written warning', 'Final written warning'], def: 'Written warning', req: 1 },
-    { k: 'date', t: 'date', l: 'Date', req: 1 },
+    ...headFields({}), ...catFields,
     { k: 'concern', t: 'textarea', l: 'Details of the incident / conduct', req: 1, ph: 'What happened, where, when, who was present…' },
     { k: 'standard', t: 'textarea', l: 'Standard / policy not met', ph: 'The rule, procedure or instruction that was not followed…' },
     { k: 'improvement', t: 'textarea', l: 'Improvement required', req: 1, ph: 'What must change, and by when…' },
     { k: 'consequence', t: 'textarea', l: 'Consequence if it is repeated', req: 1, def: 'Further breaches may result in further disciplinary action up to and including dismissal.' },
     { k: 'comments', t: 'textarea', l: "Employee's comments", ph: 'Optional' },
-    { k: 'supervisor', t: 'user', l: 'Supervisor', req: 1 }] },
-  ACCIDENT: { label: 'Accident / Incident', title: 'ACCIDENT / INCIDENT REPORT', sig: true, pdf: true,
+    { k: 'supervisor', t: 'user', l: 'Supervisor', req: 1 }, retrainField] },
+  ACCIDENT: { label: 'Accident / Incident', title: 'ACCIDENT / INCIDENT REPORT', sig: true, pdf: true, mgr: true,
     attest: 'The employee confirms that this report is a fair account of the incident.',
     fields: [
-    { k: 'date', t: 'date', l: 'Date', req: 1 }, { k: 'time', t: 'time', l: 'Time', req: 1 },
-    { k: 'location', t: 'text', l: 'Location', req: 1, ph: 'Station / platform / post' },
+    ...headFields({ timeReq: 1, locReq: 1, locPh: 'Station / platform / post' }),
     { k: 'kind', t: 'select', l: 'Type of incident', opts: ['Injury at work', 'Physical assault', 'Threat / verbal abuse', 'Near miss', 'Property damage', 'Other'], req: 1, def: 'Injury at work' },
     { k: 'description', t: 'textarea', l: 'What happened', req: 1, ph: 'Describe the sequence of events…' },
     { k: 'aggressor', t: 'textarea', l: 'Person(s) involved / description', ph: 'Description of the aggressor, direction left, vehicle…', showIf: d => /assault|threat/i.test(d.kind || '') },
@@ -213,10 +230,10 @@ const FORMS = {
     { k: 'managerInformed', t: 'radio', l: 'Line Manager informed?', opts: YN, def: 'yes', req: 1 },
     { k: 'daysOff', t: 'text', l: 'Time off work (if known)', ph: 'Optional' },
     { k: 'supervisor', t: 'user', l: 'Reported by (supervisor)', req: 1 }] },
-  PROBATION: { label: 'Probation Review', title: 'PROBATION REVIEW', sig: true, pdf: true,
+  PROBATION: { label: 'Probation Review', title: 'PROBATION REVIEW', sig: true, pdf: true, mgr: true,
     attest: 'By signing, the employee acknowledges that this review took place and that they received a copy.',
     fields: [
-    { k: 'date', t: 'date', l: 'Review date', req: 1 },
+    ...headFields({ dateLabel: 'Review date' }),
     { k: 'review', t: 'select', l: 'Review', opts: ['1st review', '2nd review', '3rd review', 'Final review'], def: '1st review', req: 1 },
     { k: 'r_attendance', t: 'rate', l: 'Attendance', req: 1 }, { k: 'r_punctuality', t: 'rate', l: 'Punctuality', req: 1 },
     { k: 'r_conduct', t: 'rate', l: 'Conduct', req: 1 }, { k: 'r_performance', t: 'rate', l: 'Performance', req: 1 },
@@ -283,7 +300,7 @@ async function flushOutbox() {
       if (!q.length) break;
       const it = q[0];
       let r;
-      try { r = await api('saveEntry', { entry: it.entry, sig: it.sig || '' }); } catch (e) { break; }
+      try { r = await api('saveEntry', { entry: it.entry, sig: it.sig || '', sigs: it.sigs || {} }); } catch (e) { break; }
       if (r && r.ok) { lsSet(LS_OUTBOX, outbox().slice(1)); }
       else if (r && r.error) { toast('Could not save one entry: ' + r.error, 4000); lsSet(LS_OUTBOX, outbox().slice(1)); }
       else break;
@@ -648,7 +665,6 @@ function renderProfile(app, p) {
 }
 
 /* ================= Form (new / edit) ================= */
-let sigPad = null;
 function draftKey(p) { return LS_DRAFT + p.type + '_' + (p.entryId || p.empId); }
 function visible(f, vals) { return !f.showIf || f.showIf(vals); }
 
@@ -663,7 +679,8 @@ function renderForm(app, p) {
   let vals = {};
   def.fields.forEach(f => { if (f.def != null) vals[f.k] = f.def; if (f.t === 'user') vals[f.k] = S.cred.user; });
   vals.date = todayStr();
-  if (p.type === 'ACCIDENT' || p.type === 'NOTE') vals.time = nowTime();
+  vals.time = nowTime();
+  if (TEAMS.indexOf(emp.team) >= 0) vals.team = emp.team; else if (emp.team) { vals.team = '__other__'; vals.teamOther = emp.team; }
   if (editing) {
     vals = Object.assign(vals, editing.data || {});
     vals.date = editing.date; if (editing.time) vals.time = editing.time;
@@ -678,9 +695,11 @@ function renderForm(app, p) {
   h += '<div id="fldBox"></div>';
   h += '</div>';
   if (def.sig) {
+    h += '<div class="card"><h2>Supervisor signature</h2><div class="sig-shell"><canvas id="supCv"></canvas><div class="sig-ph" id="supPh">Sign here with a finger, or upload an image</div></div><div class="row" style="margin-top:10px;flex-wrap:wrap"><span class="hint" style="margin:0;min-width:140px">Signing as: <b>' + esc(vals.supervisor || S.cred.user) + '</b></span><button class="btn small ghost" id="supUse" type="button" style="flex:none">Use saved</button><button class="btn small ghost" id="supUp" type="button" style="flex:none">Upload image</button><button class="btn small ghost" id="supClear" type="button" style="flex:none">Clear</button></div><input type="file" id="supFile" accept="image/*" style="display:none"></div>';
     h += '<div class="card"><h2>Employee signature</h2><div id="sigArea"><div class="sig-shell"><canvas id="sigCv"></canvas><div class="sig-ph" id="sigPh">Hand the phone to ' + esc(dispName(emp)) + ' to sign with a finger</div></div><div class="row" style="margin-top:10px"><span class="hint" style="margin:0">Signing as: <b>' + esc(dispName(emp)) + '</b></span><button class="btn small ghost" id="sigClear" type="button" style="flex:none">Clear</button></div></div>' +
       '<label style="margin-top:14px;display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" id="refused" style="width:auto"> Employee declined / was unable to sign</label><div id="witBox" class="field hidden" style="margin-top:10px"><label>Witness (name)</label><input type="text" id="witness" placeholder="Who was present"></div>' +
       (def.attest ? '<div class="hintbox">' + esc(def.attest) + '</div>' : '') + '</div>';
+    if (def.mgr) h += '<div class="card"><h2>Line Manager signature <span class="hint">optional</span></h2><div class="sig-shell"><canvas id="mgrCv"></canvas><div class="sig-ph" id="mgrPh">Line Manager signs here, or upload an image</div></div><div class="row" style="margin-top:10px;flex-wrap:wrap"><span class="hint" style="margin:0;min-width:140px">Signing as: <b>' + esc(LINE_MANAGER) + '</b></span><button class="btn small ghost" id="mgrUp" type="button" style="flex:none">Upload image</button><button class="btn small ghost" id="mgrClear" type="button" style="flex:none">Clear</button></div><input type="file" id="mgrFile" accept="image/*" style="display:none"></div>';
   }
   h += '<div style="height:70px"></div><div class="actionbar"><div class="wrap" style="padding:0"><button class="btn" id="fmSave">' + (def.pdf ? (editing ? 'Update and make PDF' : 'Save and make PDF') : (editing ? 'Update' : 'Save')) + '</button></div></div>';
   app.innerHTML = h;
@@ -700,7 +719,7 @@ function renderForm(app, p) {
   const saveDraft = () => { if (!editing) { vals = readFields(def, box, vals); lsSet(draftKey(p), vals); } };
   drawFields();
 
-  if (def.sig) setupSig();
+  if (def.sig) setupSig(def);
   $('fmSave').onclick = () => submitForm(def, p, emp, editing, () => readFields(def, box, vals), prior);
 }
 function priorCounts(empId, exceptId) {
@@ -713,6 +732,8 @@ function fieldHtml(f, v) {
   const lab = '<label>' + esc(f.l) + (f.req ? '' : ' <span class="hint">optional</span>') + '</label>';
   const opt = o => Array.isArray(o) ? o : [o, o];
   if (f.t === 'textarea') return '<div class="field">' + lab + '<textarea data-k="' + f.k + '" placeholder="' + esc(f.ph || '') + '">' + esc(val) + '</textarea></div>';
+  if (f.t === 'checks') { const sel = Array.isArray(v[f.k]) ? v[f.k] : []; return '<div class="field">' + lab + '<div class="chk-list">' + f.opts.map(o => '<label class="chk"><input type="checkbox" data-k="' + f.k + '" data-multi="1" value="' + esc(o[0]) + '"' + (sel.indexOf(o[0]) >= 0 ? ' checked' : '') + '><span>' + esc(o[1]) + '</span></label>').join('') + '</div></div>'; }
+  if (f.t === 'check') return '<div class="field"><label class="chk"><input type="checkbox" data-k="' + f.k + '"' + (val ? ' checked' : '') + '><span>' + esc(f.l) + '</span></label></div>';
   if (f.t === 'text') return '<div class="field">' + lab + '<input type="text" data-k="' + f.k + '" value="' + esc(val) + '" placeholder="' + esc(f.ph || '') + '"></div>';
   if (f.t === 'date') return '<div class="field">' + lab + '<input type="date" data-k="' + f.k + '" value="' + esc(val) + '"></div>';
   if (f.t === 'time') return '<div class="field">' + lab + '<input type="time" data-k="' + f.k + '" value="' + esc(val) + '"></div>';
@@ -731,36 +752,66 @@ function bindStepper(box) {
 }
 function readFields(def, box, prev) {
   const out = Object.assign({}, prev);
+  const multi = {};
   [].forEach.call(box.querySelectorAll('[data-k]'), el => {
     const k = el.getAttribute('data-k');
     if (el.type === 'radio') { if (el.checked) out[k] = el.value; }
-    else out[k] = el.value;
+    else if (el.type === 'checkbox') {
+      if (el.hasAttribute('data-multi')) { multi[k] = multi[k] || []; if (el.checked) multi[k].push(el.value); }
+      else out[k] = el.checked ? '1' : '';
+    } else out[k] = el.value;
   });
+  Object.keys(multi).forEach(k => { out[k] = multi[k]; });
   return out;
 }
-function setupSig() {
-  const cv = $('sigCv');
-  sigPad = null;
-  if (window.SignaturePad && cv) {
+let pads = {};
+function makePad(key) {
+  const cv = $(key + 'Cv'); if (!cv) return null;
+  const o = { key: key, cv: cv, sp: null, uploaded: false };
+  if (window.SignaturePad) {
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
-    const fit = () => { const data = sigPad && !sigPad.isEmpty() ? sigPad.toData() : null; cv.width = cv.offsetWidth * ratio; cv.height = cv.offsetHeight * ratio; cv.getContext('2d').scale(ratio, ratio); if (sigPad) { sigPad.clear(); if (data) sigPad.fromData(data); } };
+    const fit = () => { const data = o.sp && !o.sp.isEmpty() ? o.sp.toData() : null; cv.width = cv.offsetWidth * ratio; cv.height = cv.offsetHeight * ratio; cv.getContext('2d').scale(ratio, ratio); if (o.sp) { o.sp.clear(); if (data) o.sp.fromData(data); } };
     fit();
-    sigPad = new SignaturePad(cv, { penColor: '#16233A', backgroundColor: 'rgba(0,0,0,0)', minWidth: 1.2, maxWidth: 2.6 });
-    sigPad.addEventListener('beginStroke', () => { $('sigPh').style.display = 'none'; });
+    o.sp = new SignaturePad(cv, { penColor: '#16233A', backgroundColor: 'rgba(0,0,0,0)', minWidth: 1.2, maxWidth: 2.6 });
+    o.sp.addEventListener('beginStroke', () => { $(key + 'Ph').style.display = 'none'; });
   }
-  $('sigClear').onclick = () => { if (sigPad) sigPad.clear(); $('sigPh').style.display = 'flex'; };
+  o.empty = () => !o.uploaded && (!o.sp || o.sp.isEmpty());
+  o.clear = () => { if (o.sp) o.sp.clear(); o.uploaded = false; try { const c = cv.getContext('2d'); c.clearRect(0, 0, cv.width, cv.height); } catch (e) {} $(key + 'Ph').style.display = 'flex'; };
+  o.drawUrl = url => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = cv.getContext('2d'); const r = Math.max(window.devicePixelRatio || 1, 1);
+        const W = cv.width / r, H = cv.height / r; const k = Math.min(W / img.width, H / img.height, 1);
+        c.clearRect(0, 0, cv.width, cv.height);
+        c.drawImage(img, (W - img.width * k) / 2, (H - img.height * k) / 2, img.width * k, img.height * k);
+      } catch (e) {}
+      o.uploaded = true; $(key + 'Ph').style.display = 'none';
+    };
+    img.src = url;
+  };
+  $(key + 'Clear').onclick = o.clear;
+  if ($(key + 'Up')) {
+    $(key + 'Up').onclick = () => $(key + 'File').click();
+    $(key + 'File').onchange = ev => { const f = ev.target.files && ev.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => o.drawUrl(rd.result); rd.readAsDataURL(f); ev.target.value = ''; };
+  }
+  pads[key] = o; return o;
+}
+function setupSig(def) {
+  pads = {};
+  makePad('sup'); makePad('sig'); if (def && def.mgr) makePad('mgr');
+  if ($('supUse')) $('supUse').onclick = () => { const s = lsGet('profiles_sig_' + (S.cred ? S.cred.user : ''), ''); if (!s) { toast('No saved signature yet — it is saved after your first document'); return; } pads.sup.clear(); pads.sup.drawUrl(s); };
   $('refused').onchange = () => { const r = $('refused').checked; $('witBox').classList.toggle('hidden', !r); $('sigArea').style.opacity = r ? '.4' : '1'; };
 }
-function sigDataUrl() {
-  if (!sigPad || sigPad.isEmpty()) return '';
-  const full = sigPad.toDataURL('image/png');
+function padData(o) {
+  if (!o || o.empty()) return '';
   try {   // shrink so it fits in a sheet cell
-    const src = $('sigCv'); const w = 360, h = Math.round(360 * src.height / src.width);
+    const src = o.cv; const w = 360, h = Math.round(360 * src.height / src.width);
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     c.getContext('2d').drawImage(src, 0, 0, w, h);
     const small = c.toDataURL('image/png');
     return small && small.length < 44000 ? small : '';
-  } catch (e) { return full.length < 44000 ? full : ''; }
+  } catch (e) { const full = o.sp ? o.sp.toDataURL('image/png') : ''; return full.length < 44000 ? full : ''; }
 }
 
 async function submitForm(def, p, emp, editing, getVals, prior) {
@@ -770,14 +821,17 @@ async function submitForm(def, p, emp, editing, getVals, prior) {
     if (!visible(f, vals)) continue;
     if (f.req && !String(vals[f.k] == null ? '' : vals[f.k]).trim()) { toast('Please fill in: ' + f.l); return; }
   }
-  let sig = '', refused = false, witness = '';
+  let sig = '', sigSup = '', sigMgr = '', refused = false, witness = '';
   if (def.sig) {
     refused = $('refused').checked; witness = ($('witness').value || '').trim();
+    sigSup = padData(pads.sup); if (!sigSup) { toast('The supervisor must sign'); return; }
     if (refused) { if (!witness) { toast('Add the name of the witness'); return; } }
-    else { sig = sigDataUrl(); if (!sig) { toast('The employee must sign (or tick "declined")'); return; } }
+    else { sig = padData(pads.sig); if (!sig) { toast('The employee must sign (or tick "declined")'); return; } }
+    sigMgr = pads.mgr ? padData(pads.mgr) : '';
   }
   const data = {};
   def.fields.forEach(f => { if (visible(f, vals) && f.k !== 'date' && f.k !== 'time' && vals[f.k] != null && vals[f.k] !== '') data[f.k] = f.t === 'stepper' ? Number(vals[f.k]) : vals[f.k]; });
+  Object.keys(data).forEach(k => { if (Array.isArray(data[k]) && !data[k].length) delete data[k]; });
   if (def.sig) { data.refused = refused; data.witness = refused ? witness : ''; }
   if (def.warn) data.prior = prior;
   const entry = {
@@ -788,7 +842,8 @@ async function submitForm(def, p, emp, editing, getVals, prior) {
   entry.text = p.type === 'NOTE' ? (vals.text || '') : (vals.concern || vals.description || vals.comments || '');
   if (p.type === 'NOTE') { delete data.text; delete data.category; }
   const q = outbox().filter(o => o.entry.id !== entry.id);
-  q.push({ entry: entry, sig: sig });
+  q.push({ entry: entry, sig: sig, sigs: { sup: sigSup, mgr: sigMgr } });
+  if (sigSup && S.cred) lsSet('profiles_sig_' + S.cred.user, sigSup);
   lsSet(LS_OUTBOX, q);
   lsDel(draftKey(p));
   S.entries = mergeEntries((S.serverEntries || S.entries.filter(e => !e.pending)).filter(e => e.id !== entry.id));
@@ -799,7 +854,7 @@ async function submitForm(def, p, emp, editing, getVals, prior) {
   updateSyncLabel();
   const ent = S.entries.find(e => e.id === entry.id) || entry;
   if (def.pdf) {
-    lastPdf = { entry: ent, sig: sig, refused: refused };
+    lastPdf = { entry: ent, sig: sig, sup: sigSup, mgr: sigMgr, refused: refused };
     showPdfSheet(def, ent, saved, true);
   } else { toast(saved ? 'Saved' : 'Saved on this phone — will upload when online', 3000); stack.pop(); render(); }
 }
@@ -818,8 +873,8 @@ function renderEntry(app, p) {
     rows += '<div class="kv"><b>Note</b><div class="v">' + esc(e.text) + '</div></div>' + (e.teams && e.teams.length ? '<div class="kv"><b>Teams</b><div class="v">' + esc(e.teams.join(', ')) + '</div></div>' : '');
   } else if (def) {
     def.fields.forEach(f => {
-      if (f.k === 'date' || f.k === 'time' || !visible(f, d) || d[f.k] == null || d[f.k] === '') return;
-      rows += '<div class="kv"><b>' + esc(f.l) + '</b><div class="v">' + esc(displayVal(f, d[f.k])) + '</div></div>';
+      if (f.k === 'date' || f.k === 'time' || f.k === 'teamOther' || f.k === 'catsOther' || !visible(f, d) || d[f.k] == null || d[f.k] === '' || (Array.isArray(d[f.k]) && !d[f.k].length)) return;
+      rows += '<div class="kv"><b>' + esc(f.l.replace(/ — .*$/, '')) + '</b><div class="v">' + esc(displayVal(f, d[f.k], d)) + '</div></div>';
     });
     if (d.refused) rows += '<div class="kv"><b>Signature</b><div class="v">Employee declined / unable to sign. Witness: ' + esc(d.witness) + '</div></div>';
     if (d.prior) rows += '<div class="kv"><b>On file before</b><div class="v">' + d.prior.COUNSELING + ' counseling · ' + d.prior.VERBAL + ' verbal · ' + d.prior.WRITTEN + ' written</div></div>';
@@ -830,9 +885,9 @@ function renderEntry(app, p) {
   h += '<button class="btn ghost" id="enEdit">Edit</button><div style="height:10px"></div><button class="btn danger" id="enDel">Delete</button><div class="sync" id="enDelHint">Tap Delete twice. Deleted records are kept in the sheet history.</div></div>';
   app.innerHTML = h;
   if ($('enPdf')) $('enPdf').onclick = async () => {
-    let sig = '';
-    if (!d.refused) { try { const r = await api('getSig', { id: e.id }); sig = (r && r.image) || ''; } catch (err) { toast(netErr(err), 7000); return; } }
-    lastPdf = { entry: e, sig: sig, refused: !!d.refused };
+    let sg = {};
+    try { const r = await api('getSigs', { id: e.id }); sg = r || {}; } catch (err) { toast(netErr(err), 7000); return; }
+    lastPdf = { entry: e, sig: d.refused ? '' : (sg.emp || ''), sup: sg.sup || '', mgr: sg.mgr || '', refused: !!d.refused };
     showPdfSheet(def, e, true);
   };
   $('enEdit').onclick = () => { if (e.source === 'calendar') { toast('Edit this one in the Period Calendar (hub)', 4000); return; } if (e.pending) { toast('Wait until it has uploaded'); return; } stack.pop(); go('form', { type: e.type, entryId: e.id, empId: e.employeeIds[0] }); };
@@ -843,7 +898,10 @@ function renderEntry(app, p) {
     catch (err) { toast(netErr(err), 7000); }
   };
 }
-function displayVal(f, v) {
+function displayVal(f, v, d) {
+  if (f.t === 'checks') return catsOf(d || { cats: v });
+  if (f.k === 'team') return teamOf(d || { team: v });
+  if (f.t === 'check') return 'Yes';
   if (f.opts) { const o = f.opts.find(x => (Array.isArray(x) ? x[0] : x) === v); if (o) return Array.isArray(o) ? o[1] : o; }
   if (f.t === 'date') return fmtDate(v);
   return String(v);
@@ -855,7 +913,8 @@ function pdfFilename(e) {
   const f = FORMS[e.type]; const n = (e.employeeNames[0] || 'Employee').replace(/[^a-z0-9]+/gi, '_');
   return f.label.replace(/[^a-z0-9]+/gi, '_') + '_' + n + '_' + e.date + (docNoOf(e) ? '_' + docNoOf(e) : '') + '.pdf';
 }
-function buildPdf(e, sig) {
+function buildPdf(e, sg) {
+  sg = sg || {};
   const def = FORMS[e.type], d = e.data || {};
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -888,38 +947,64 @@ function buildPdf(e, sig) {
     });
     y += 5;
   };
+  const twoUp = (l1, v1, l2, v2) => {
+    need(8);
+    const mid = mL + cw / 2;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(14, 35, 64); doc.text(l1 + ' ', mL, y);
+    let lw = doc.getTextWidth(l1 + ' ');
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 60); doc.text(String(v1 || '—'), mL + lw, y);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(14, 35, 64); doc.text(l2 + ' ', mid, y);
+    lw = doc.getTextWidth(l2 + ' ');
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 60); doc.text(String(v2 || '—'), mid + lw, y);
+    y += 7;
+  };
   inline('Employee:', e.employeeNames.join(', '));
-  inline('Date:', fmtDate(e.date) + (d.time || e.time ? ' at ' + (e.time) : ''));
-  inline('Site:', SITE);
+  twoUp('Date:', fmtDate(e.date), 'Time:', e.time);
+  twoUp('Site:', SITE, 'Location:', d.location);
+  inline('Team:', teamOf(d));
   y += 2;
   if (d.prior) { inline('Previously on file:', d.prior.COUNSELING + ' informal counseling, ' + d.prior.VERBAL + ' verbal, ' + d.prior.WRITTEN + ' written'); y += 2; }
+  const SKIP = ['date', 'time', 'location', 'team', 'teamOther', 'catsOther', 'recurTbc', 'supervisor', 'retraining'];
   def.fields.forEach(f => {
-    if (f.k === 'date' || f.k === 'time' || f.t === 'user' || !visible(f, d)) return;
-    const v = d[f.k]; if (v == null || v === '') return;
+    if (SKIP.indexOf(f.k) >= 0 || f.t === 'user' || !visible(f, d)) return;
+    const v = d[f.k]; if (v == null || v === '' || (Array.isArray(v) && !v.length)) return;
     const label = (f.pl || f.l).replace(/ — .*$/, '') + ':';
-    if (f.t === 'textarea') block(label, v);
-    else if (f.t === 'stepper') inline('Recurrent:', v + ' time' + (v == 1 ? '' : 's'));
-    else inline(label, displayVal(f, v));
+    if (f.t === 'checks') block(label, catsOf(d));
+    else if (f.t === 'textarea') block(label, v);
+    else if (f.t === 'stepper') inline('Recurrent:', d.recurTbc ? 'To be confirmed' : v + ' time' + (v == 1 ? '' : 's'));
+    else inline(label, displayVal(f, v, d));
   });
   y += 2;
-  inline('Supervisor:', d.supervisor || e.author);
+  if (d.retraining) twoUp('Supervisor:', d.supervisor || e.author, 'Retraining Needed:', d.retraining);
+  else inline('Supervisor:', d.supervisor || e.author);
   inline('Line Manager:', LINE_MANAGER);
   y += 4;
-  need(48);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(14, 35, 64);
-  doc.text('Employee Acknowledgment:', mL, y); y += 4;
-  if (d.refused) {
-    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 60);
-    doc.text('The employee declined / was unable to sign.', mL, y + 4);
-    doc.text('Witness: ' + (d.witness || ''), mL, y + 10); y += 16;
-  } else {
-    const sw = 70, sh = 28;
-    if (sig) { try { doc.addImage(sig, 'PNG', mL, y, sw, sh); } catch (err) {} }
-    doc.setDrawColor(180, 190, 205); doc.line(mL, y + sh + 2, mL + sw, y + sh + 2);
+  const sw = 70, sh = 26, midX = mL + cw / 2;
+  const sigBlock = (x, title, img, name, emptyNote) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(14, 35, 64); doc.text(title, x, y);
+    if (img) { try { doc.addImage(img, 'PNG', x, y + 4, sw, sh); } catch (err) {} }
+    else if (emptyNote) { doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(150, 160, 175); doc.text(emptyNote, x, y + 4 + sh / 2); }
+    doc.setDrawColor(180, 190, 205); doc.line(x, y + sh + 6, x + sw, y + sh + 6);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(110, 120, 140);
-    doc.text(e.employeeNames[0] || '', mL, y + sh + 6);
-    const ds = fmtDate(e.date); doc.text(ds, mL + sw - doc.getTextWidth(ds), y + sh + 6);
-    y += sh + 12;
+    doc.text(name || '', x, y + sh + 10);
+    const ds = fmtDate(e.date); doc.text(ds, x + sw - doc.getTextWidth(ds), y + sh + 10);
+  };
+  need(def.mgr ? 86 : 48);
+  const sy = y;
+  sigBlock(mL, 'Supervisor Signature:', sg.sup, d.supervisor || e.author, 'No signature provided');
+  if (d.refused) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(14, 35, 64); doc.text('Employee Acknowledgment:', midX, sy);
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(9.5); doc.setTextColor(160, 40, 40);
+    doc.text('Employee declined / was unable to sign.', midX, sy + 12);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 60); doc.text('Witness: ' + (d.witness || ''), midX, sy + 18);
+  } else {
+    sigBlock(midX, 'Employee Acknowledgment:', sg.emp, e.employeeNames[0], '');
+  }
+  y = sy + sh + 16;
+  if (def.mgr) {
+    need(50);
+    sigBlock(mL, 'Line Manager Signature:', sg.mgr, LINE_MANAGER, '');
+    y += sh + 16;
   }
   if (def.attest) {
     doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor(110, 120, 140);
@@ -932,7 +1017,7 @@ let lastDoc = null;
 let sheetFromForm = false;
 function showPdfSheet(def, e, uploaded, fromForm) {
   sheetFromForm = !!fromForm;
-  try { lastDoc = buildPdf(e, lastPdf.sig); } catch (err) { lastDoc = null; toast('Saved, but the PDF could not be built: ' + err.message, 4000); }
+  try { lastDoc = buildPdf(e, { emp: lastPdf.sig, sup: lastPdf.sup, mgr: lastPdf.mgr }); } catch (err) { lastDoc = null; toast('Saved, but the PDF could not be built: ' + err.message, 4000); }
   $('sheetTitle').textContent = uploaded ? 'Saved' : 'Saved on this phone';
   $('sheetSub').textContent = (uploaded ? '' : 'It will upload when you are online. ') + pdfFilename(e);
   $('overlay').classList.add('show');
