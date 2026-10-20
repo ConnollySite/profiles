@@ -109,6 +109,7 @@
 
 <nav class="tabs hidden" id="tabs">
   <button data-tab="people" class="on">People</button>
+  <button data-tab="forms">Forms</button>
   <button data-tab="probation">Probation</button>
   <button data-tab="activity">Activity</button>
   <button data-tab="more">More</button>
@@ -226,6 +227,9 @@ const FORMS = {
     { k: 'supervisor', t: 'user', l: 'Supervisor', req: 1 }] }
 };
 const TYPE_ORDER = ['NOTE', 'COUNSELING', 'VERBAL', 'WRITTEN', 'ACCIDENT', 'PROBATION'];
+/* Formal documents get a sequential number from the server when they are saved (e.g. IC-2026-0001). Offline, they get it when they upload. */
+const DOC_PREFIX = { COUNSELING: 'IC', VERBAL: 'VW', WRITTEN: 'WW', ACCIDENT: 'AR', PROBATION: 'PR' };
+const docNoOf = e => (e && e.data && e.data.docNo) || '';
 const TYPE_CHIP = { NOTE: 'blue', COUNSELING: 'blue', VERBAL: 'warn', WRITTEN: 'bad', ACCIDENT: 'bad', PROBATION: 'ok' };
 
 /* ================= State and storage ================= */
@@ -382,6 +386,7 @@ function render() {
   if (!top) {
     [].forEach.call($('tabs').querySelectorAll('button'), b => b.classList.toggle('on', b.getAttribute('data-tab') === tab));
     if (tab === 'people') return renderPeople(app);
+    if (tab === 'forms') return renderFormsTab(app);
     if (tab === 'probation') return renderProbation(app);
     if (tab === 'activity') return renderActivity(app);
     return renderMore(app);
@@ -391,6 +396,29 @@ function render() {
   if (top.view === 'entry') return renderEntry(app, top.p);
   if (top.view === 'employee') return renderEmployeeEdit(app, top.p);
   if (top.view === 'import') return renderImport(app);
+}
+
+
+/* ================= Forms tab (outside the profiles) ================= */
+let formsEmp = '', formsQ = '';
+function renderFormsTab(app) {
+  setHeader('Forms', 'Pick the employee, then the form', false);
+  const emps = S.employees.filter(e => e.status !== 'left').sort((a, b) => a.name.localeCompare(b.name));
+  const q = normName(formsQ);
+  const list = emps.filter(e => !q || normName(dispName(e)).indexOf(q) >= 0 || e.id === formsEmp);
+  let h = '<div class="card"><h2>Employee</h2><input type="search" id="fmQ" placeholder="Type a name or staff number to narrow the list…" value="' + esc(formsQ) + '" autocomplete="off" style="margin-bottom:8px">' +
+    '<select id="fmEmp"><option value="">— Choose employee (' + list.length + ') —</option>' + list.map(e => '<option value="' + esc(e.id) + '"' + (e.id === formsEmp ? ' selected' : '') + '>' + esc(dispName(e)) + (e.team ? ' · ' + esc(e.team) : '') + '</option>').join('') + '</select>' +
+    '<div class="sync" id="fmWho" style="margin-top:8px"></div></div>';
+  h += '<div class="card"><h2>Form</h2><div class="grid2">' + TYPE_ORDER.map(t => '<button class="btn ghost" data-new="' + t + '" style="font-size:13.5px">' + esc(FORMS[t].label) + '</button>').join('') + '</div></div>';
+  const docs = S.entries.filter(x => docNoOf(x)).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).slice(0, 15);
+  h += '<div class="card"><h2>Latest documents</h2>' + (docs.length ? '<div class="tl">' + docs.map(x => entryItem(x, true)).join('') + '</div>' : '<div class="empty">No numbered documents yet.</div>') + '</div>';
+  app.innerHTML = h;
+  bindItems(app);
+  const who = () => { const e = empById(formsEmp); $('fmWho').innerHTML = e ? 'Linked to the profile of <b>' + esc(dispName(e)) + '</b>. The document and its number will show in that history.' : 'The form is saved in the profile of the person you choose.'; };
+  who();
+  $('fmEmp').onchange = () => { formsEmp = $('fmEmp').value; who(); };
+  $('fmQ').oninput = () => { formsQ = $('fmQ').value; const pos = $('fmQ').selectionStart; renderFormsTab(app); const n = $('fmQ'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (er) {} };
+  [].forEach.call(app.querySelectorAll('[data-new]'), b => { b.onclick = () => { if (!formsEmp) { toast('Choose the employee first'); return; } go('form', { type: b.getAttribute('data-new'), empId: formsEmp }); }; });
 }
 
 /* ================= Login ================= */
@@ -484,7 +512,7 @@ function renderActivity(app) {
 function entryItem(e, showWho) {
   const who = showWho ? '<b>' + esc(e.employeeNames.join(' & ')) + '</b> · ' : '';
   const sum = entrySummary(e);
-  return '<button class="item" data-go="entry" data-id="' + esc(e.id) + '"><div><span class="chip ' + (TYPE_CHIP[e.type] || '') + '">' + esc(entryTitle(e)) + '</span>' + (e.pending ? '<span class="chip warn">Waiting to upload</span>' : '') + (e.source === 'checkpoints' ? '<span class="chip">Check Points</span>' : '') + '</div><div class="sb" style="margin-top:2px">' + who + esc(shortDate(e.date)) + (e.time ? ' ' + esc(e.time) : '') + ' · ' + esc(e.author) + '</div>' + (sum ? '<div style="font-size:13.5px;margin-top:5px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">' + esc(sum) + '</div>' : '') + '</button>';
+  return '<button class="item" data-go="entry" data-id="' + esc(e.id) + '"><div><span class="chip ' + (TYPE_CHIP[e.type] || '') + '">' + esc(entryTitle(e)) + '</span>' + (docNoOf(e) ? '<span class="chip">No. ' + esc(docNoOf(e)) + '</span>' : '') + (e.pending ? '<span class="chip warn">Waiting to upload</span>' : '') + (e.source === 'checkpoints' ? '<span class="chip">Check Points</span>' : '') + '</div><div class="sb" style="margin-top:2px">' + who + esc(shortDate(e.date)) + (e.time ? ' ' + esc(e.time) : '') + ' · ' + esc(e.author) + '</div>' + (sum ? '<div style="font-size:13.5px;margin-top:5px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">' + esc(sum) + '</div>' : '') + '</button>';
 }
 
 /* ================= More ================= */
@@ -602,13 +630,13 @@ function renderProfile(app, p) {
   let h = '<div class="card"><div class="stat"><div><b>' + c.COUNSELING + '</b><span>Counseling</span></div><div><b>' + c.VERBAL + '</b><span>Verbal</span></div><div><b>' + c.WRITTEN + '</b><span>Written</span></div></div>' +
     '<div class="sync" style="margin-top:6px">Last 12 months: ' + c.y.COUNSELING + ' counseling · ' + c.y.VERBAL + ' verbal · ' + c.y.WRITTEN + ' written</div>' +
     (hint ? '<div class="hintbox">' + esc(hint) + '</div>' : '') + (probChip(e) ? '<div style="margin-top:12px">' + probChip(e) + (e.probEnd ? '<span class="sb" style="font-size:12px;color:var(--sub)"> ends ' + esc(fmtDate(e.probEnd)) + '</span>' : '') + '</div>' : '') + '</div>' +
-    '<div class="card"><h2>New</h2><div class="grid2">' + TYPE_ORDER.map(t => '<button class="btn ghost" data-new="' + t + '" style="font-size:13.5px">' + esc(FORMS[t].label) + '</button>').join('') + '</div><div style="height:10px"></div><button class="btn small ghost" id="prEdit">Edit employee details</button></div>';
+    '<div class="card"><h2>Forms</h2><div class="hint" style="margin:0 0 10px">Forms are filled in from the Forms tab. Every document is saved here in the history with its number (numbers are given when it uploads).</div><button class="btn" id="prForms">New form for this person</button><div style="height:10px"></div><button class="btn small ghost" id="prEdit">Edit employee details</button></div>';
   h += uniformCard(e);
   h += '<div class="card"><h2>History (' + list.length + ')</h2>' + (list.length ? '<div class="tl">' + list.map(x => entryItem(x, false)).join('') + '</div>' : '<div class="empty">No records yet.</div>') + '</div>';
   if (e.notes) h += '<div class="card"><h2>Notes</h2><div class="kv"><div class="v">' + esc(e.notes) + '</div></div></div>';
   app.innerHTML = h;
   bindItems(app);
-  [].forEach.call(app.querySelectorAll('[data-new]'), b => { b.onclick = () => go('form', { type: b.getAttribute('data-new'), empId: e.id }); });
+  $('prForms').onclick = () => { formsEmp = e.id; tab = 'forms'; stack = []; render(); window.scrollTo(0, 0); };
   $('prEdit').onclick = () => go('employee', { id: e.id });
   bindUniform(app, e);
 }
@@ -778,6 +806,7 @@ function renderEntry(app, p) {
   setHeader(entryTitle(e), e.employeeNames.join(' & '), true);
   const d = e.data || {};
   let rows = '<div class="kv"><b>Employee</b><div class="v">' + esc(e.employeeNames.join(', ')) + '</div></div>' +
+    (docNoOf(e) ? '<div class="kv"><b>Document no.</b><div class="v"><b>' + esc(docNoOf(e)) + '</b></div></div>' : '') +
     '<div class="kv"><b>Date</b><div class="v">' + esc(fmtDate(e.date)) + (e.time ? ' · ' + esc(e.time) : '') + '</div></div>';
   if (e.type === 'NOTE') {
     rows += '<div class="kv"><b>Note</b><div class="v">' + esc(e.text) + '</div></div>' + (e.teams && e.teams.length ? '<div class="kv"><b>Teams</b><div class="v">' + esc(e.teams.join(', ')) + '</div></div>' : '');
@@ -818,7 +847,7 @@ function displayVal(f, v) {
 let lastPdf = null;
 function pdfFilename(e) {
   const f = FORMS[e.type]; const n = (e.employeeNames[0] || 'Employee').replace(/[^a-z0-9]+/gi, '_');
-  return f.label.replace(/[^a-z0-9]+/gi, '_') + '_' + n + '_' + e.date + '.pdf';
+  return f.label.replace(/[^a-z0-9]+/gi, '_') + '_' + n + '_' + e.date + (docNoOf(e) ? '_' + docNoOf(e) : '') + '.pdf';
 }
 function buildPdf(e, sig) {
   const def = FORMS[e.type], d = e.data || {};
@@ -832,6 +861,8 @@ function buildPdf(e, sig) {
   try { doc.addImage(LOGO_PDF, 'PNG', mL, y - 8, h * LOGO_ASPECT, h); } catch (err) {}
   doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(14, 35, 64);
   doc.text(def.title, pageW - mR, y + 2, { align: 'right' });
+  const noTxt = docNoOf(e) ? 'No. ' + docNoOf(e) : (DOC_PREFIX[e.type] && e.pending ? 'No. assigned on upload' : '');
+  if (noTxt) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(90, 105, 125); doc.text(noTxt, pageW - mR, y + 7.5, { align: 'right' }); doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(14, 35, 64); }
   doc.setDrawColor(221, 228, 236); doc.setLineWidth(0.4); doc.line(mL, y + 10, pageW - mR, y + 10);
   y += 20;
   const inline = (label, value) => {
