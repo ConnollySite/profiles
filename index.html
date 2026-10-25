@@ -934,14 +934,14 @@ function buildPdf(e, sg) {
     need(8);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(14, 35, 64); doc.text(label + ' ', mL, y);
     const lw = doc.getTextWidth(label + ' ');
-    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 60);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
     const lines = doc.splitTextToSize(String(value || '—'), cw - lw);
     doc.text(lines, mL + lw, y); y += 5.2 * lines.length + 1.8;
   };
   const block = (label, value) => {
     need(14);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(14, 35, 64); doc.text(label, mL, y); y += 5.5;
-    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 60);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
     String(value || '—').split(/\r?\n/).forEach(par => {
       doc.splitTextToSize(par || ' ', cw).forEach(line => { need(6); doc.text(line, mL, y); y += 5.2; });
     });
@@ -952,10 +952,10 @@ function buildPdf(e, sg) {
     const mid = mL + cw / 2;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(14, 35, 64); doc.text(l1 + ' ', mL, y);
     let lw = doc.getTextWidth(l1 + ' ');
-    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 60); doc.text(String(v1 || '—'), mL + lw, y);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.text(String(v1 || '—'), mL + lw, y);
     doc.setFont('helvetica', 'bold'); doc.setTextColor(14, 35, 64); doc.text(l2 + ' ', mid, y);
     lw = doc.getTextWidth(l2 + ' ');
-    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 60); doc.text(String(v2 || '—'), mid + lw, y);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.text(String(v2 || '—'), mid + lw, y);
     y += 7;
   };
   inline('Employee:', e.employeeNames.join(', '));
@@ -996,7 +996,7 @@ function buildPdf(e, sg) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(14, 35, 64); doc.text('Employee Acknowledgment:', midX, sy);
     doc.setFont('helvetica', 'italic'); doc.setFontSize(9.5); doc.setTextColor(160, 40, 40);
     doc.text('Employee declined / was unable to sign.', midX, sy + 12);
-    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 60); doc.text('Witness: ' + (d.witness || ''), midX, sy + 18);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.text('Witness: ' + (d.witness || ''), midX, sy + 18);
   } else {
     sigBlock(midX, 'Employee Acknowledgment:', sg.emp, e.employeeNames[0], '');
   }
