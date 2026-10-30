@@ -435,13 +435,19 @@ function renderFormsTab(app) {
     h += '<div class="card"><h2>Latest documents</h2>' + (docs.length ? '<div class="tl">' + docs.map(x => entryItem(x, true)).join('') + '</div>' : '<div class="empty">No documents yet.</div>') + '</div>';
   }
   const newCard = '<div class="card"><h2>New form</h2>' + (formsEmp ? '' : '<div class="hint" style="margin:0 0 8px">Choose the person above first.</div>') + '<div class="grid2">' + TYPE_ORDER.filter(t => t !== 'NOTE').map(t => '<button class="btn ghost" data-new="' + t + '" style="font-size:13.5px' + (formsEmp ? '' : ';opacity:.5') + '">' + esc(FORMS[t].label) + '</button>').join('') + '</div></div>';
-  const cut = h.indexOf('</div></div>') + 12; h = h.slice(0, cut) + newCard + h.slice(cut);
+  const blankCard = '<div class="card"><h2>Blank forms to print</h2><div class="hint" style="margin:0 0 8px">Empty form to fill in by hand. No employee needed.</div><div class="grid2">' + TYPE_ORDER.filter(t => FORMS[t].pdf).map(t => '<button class="btn ghost" data-blank="' + t + '" style="font-size:13.5px">🖨 ' + esc(FORMS[t].label) + '</button>').join('') + '</div></div>';
+  const cut = h.indexOf('</div></div>') + 12; h = h.slice(0, cut) + newCard + blankCard + h.slice(cut);
   app.innerHTML = h;
   bindItems(app);
   const who = () => { const e = empById(formsEmp); $('fmWho').innerHTML = e ? 'Linked to the profile of <b>' + esc(dispName(e)) + '</b>. The document and its number will show in that history.' : 'The form is saved in the profile of the person you choose.'; };
   who();
   $('fmEmp').onchange = () => { formsEmp = $('fmEmp').value; renderFormsTab(app); };
   $('fmQ').oninput = () => { formsQ = $('fmQ').value; const pos = $('fmQ').selectionStart; renderFormsTab(app); const n = $('fmQ'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (er) {} };
+  [].forEach.call(app.querySelectorAll('[data-blank]'), b => { b.onclick = () => {
+    const t = b.getAttribute('data-blank');
+    try { buildBlankPdf(t).save('Blank_' + FORMS[t].label.replace(/[^a-z0-9]+/gi, '_') + '.pdf'); toast('Blank form saved — open it to print'); }
+    catch (err) { toast('Could not build the PDF: ' + err.message, 4000); }
+  }; });
   [].forEach.call(app.querySelectorAll('[data-new]'), b => { b.onclick = () => { if (!formsEmp) { toast('Choose the employee first'); return; } go('form', { type: b.getAttribute('data-new'), empId: formsEmp }); }; });
 }
 
@@ -1010,6 +1016,145 @@ function buildPdf(e, sg) {
     doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor(110, 120, 140);
     doc.splitTextToSize(def.attest, cw).forEach(line => { need(5); doc.text(line, mL, y); y += 4.3; });
   }
+  footer();
+  return doc;
+}
+// Blank form to print and fill in by hand: same layout as the saved PDF, with lines and boxes instead of answers.
+// White page, black lines (saves ink).
+// Writing lines: a minimum per box, then the free space left on page 1 is shared out, so one page is filled.
+function buildBlankPdf(type) {
+  const def = FORMS[type];
+  const tas = def.fields.filter(f => f.t === 'textarea' && !f.def);
+  const base = {};
+  tas.forEach(f => { base[f.k] = /aggressor|witnesses|injury/.test(f.k) || (f.k === 'comments' && type !== 'PROBATION') ? 2 : 3; });
+  // add writing lines one at a time, round the boxes, while the form keeps the same number of pages:
+  // every page ends up full (two-page forms are spread over both pages)
+  let doc = drawBlankPdf(type, base);
+  const pages = doc.getNumberOfPages(), n = Object.assign({}, base);
+  for (let k = 0; tas.length && k < 60; k++) {
+    const f = tas[k % tas.length].k;
+    n[f]++;
+    const t = drawBlankPdf(type, n);
+    if (t.getNumberOfPages() > pages) { n[f]--; break; }
+    doc = t;
+  }
+  return doc;
+}
+function drawBlankPdf(type, nLines) {
+  const def = FORMS[type];
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = 210, mL = 18, mR = 18, cw = pageW - mL - mR, R = pageW - mR;
+  let y = 20;
+  const footer = () => { doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120, 120, 120); doc.text('Bidvest Noonan · Connolly Site · ' + def.label + ' (blank form)', mL, 287); };
+  const need = h => { if (y + h > 281) { footer(); doc.addPage(); y = 20; } };
+  const lbl = (t, x, yy) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0); doc.text(t, x, yy); return doc.getTextWidth(t + ' '); };
+  const rule = (x1, x2, yy) => { doc.setDrawColor(165, 165, 165); doc.setLineWidth(0.15); doc.line(x1, yy, x2, yy); };
+  const box = (x, yy) => { doc.setDrawColor(120, 120, 120); doc.setLineWidth(0.2); doc.rect(x, yy - 2.4, 2.7, 2.7); };
+  const optText = o => Array.isArray(o) ? o[1] : o;
+  // header
+  const lh = 13;
+  try { doc.addImage(LOGO_PDF, 'PNG', mL, y - 8, lh * LOGO_ASPECT, lh); } catch (err) {}
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0, 0, 0);
+  doc.text(def.title, R, y + 2, { align: 'right' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.text('No. ______________', R, y + 7.5, { align: 'right' });
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4); doc.line(mL, y + 10, R, y + 10);
+  y += 17;
+  // "Label: ________" on one line (or two halves)
+  const fill = (label, x1, x2) => { const w = lbl(label, x1, y); rule(x1 + w, x2, y + 0.8); };
+  const lineField = label => { need(7.5); fill(label, mL, R); y += 7.5; };
+  const twoUp = (l1, l2) => { need(7.5); const mid = mL + cw / 2; fill(l1, mL, mid - 4); fill(l2, mid, R); y += 7.5; };
+  const lines = (label, n, pre) => {
+    need(6 + Math.min(n, 2) * 7);   // label kept with at least two lines; the rest may go on to the next page
+    lbl(label, mL, y); y += 1;
+    if (pre) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.splitTextToSize(pre, cw).forEach(t => { y += 4.5; doc.text(t, mL, y); }); }
+    for (let i = 0; i < n; i++) { if (y + 7 > 281) { footer(); doc.addPage(); y = 13; } y += 7; rule(mL, R, y); }
+    y += 6.5;
+  };
+  // tick boxes, flowing across the line (cols = fixed columns)
+  const ticks = (label, opts, cols) => {
+    const list = opts.filter(o => (Array.isArray(o) ? o[0] : o) !== '');
+    const colW = cw / cols;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(0, 0, 0);
+    const txt = list.map(o => doc.splitTextToSize(optText(o) === 'Other' || (Array.isArray(o) && o[0] === '__other__') ? 'Other: ____________________' : optText(o), colW - 7));
+    const rowH = [];
+    for (let i = 0; i < list.length; i += cols) rowH.push(4.8 + 3.4 * (Math.max.apply(null, txt.slice(i, i + cols).map(t => t.length)) - 1));
+    need(8 + rowH.reduce((a, b) => a + b, 0));
+    if (label) { lbl(label, mL, y); y += 5.5; }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(0, 0, 0);
+    let yy = y;
+    list.forEach((o, i) => {
+      const c = i % cols, x = mL + c * colW;
+      if (c === 0 && i > 0) yy += rowH[i / cols - 1];
+      box(x, yy);
+      txt[i].forEach((t, k) => doc.text(t, x + 4.2, yy + k * 3.4));
+    });
+    y = yy + rowH[rowH.length - 1] + 2;
+  };
+  const inlineTicks = (label, opts) => {
+    need(7);
+    let x = mL + lbl(label, mL, y) + 2;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    opts.forEach(o => { box(x, y); doc.text(optText(o), x + 4.2, y); x += 4.2 + doc.getTextWidth(optText(o)) + 6; });
+    y += 7;
+  };
+
+  lineField('Employee:');
+  twoUp('Date:', 'Time:');
+  need(7.5); { const mid = mL + cw / 2; const w = lbl('Site:', mL, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.text(SITE, mL + w, y); fill('Location:', mid, R); } y += 7.5;
+  lineField('Team:');
+  y += 2;
+  const SKIP = ['date', 'time', 'location', 'team', 'teamOther', 'catsOther', 'recurTbc', 'supervisor', 'retraining', 'gardaRef', 'medicalDetails', 'newEnd'];
+  def.fields.forEach(f => {
+    if (SKIP.indexOf(f.k) >= 0 || f.t === 'user') return;
+    const label = (f.pl || f.l).replace(/ — .*$/, '').replace(/([^?])$/, '$1:');
+    if (f.t === 'checks') ticks((f.l.replace(/ — .*$/, '')) + ' (tick all that apply):', f.opts, 2);
+    else if (f.t === 'textarea') lines(label, f.def ? 1 : (nLines[f.k] || 3), f.def || '');
+    else if (f.t === 'stepper') { need(7.5); fill('Recurrent — number of times:', mL, mL + 95); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); box(mL + 102, y); doc.text('To be confirmed', mL + 107.5, y); y += 7.5; }
+    else if (f.t === 'rate') inlineTicks(f.l + ':', RATE);
+    else if (f.t === 'radio' || f.t === 'select') {
+      if (f.k === 'medical') { ticks(label, f.opts, 2); lines('Medical details (who treated, where, outcome):', 2); }
+      else if (f.k === 'garda') { inlineTicks(label, f.opts); lineField('Garda station / reference:'); }
+      else if (f.k === 'decision') { ticks(label, f.opts, 2); lineField('If extended, new probation end date:'); }
+      else if (f.opts.length > 4) ticks(label, f.opts, 2);
+      else inlineTicks(label, f.opts);
+    }
+    else if (f.t === 'check') { need(7.5); box(mL, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(f.l, mL + 4.2, y); y += 7.5; }
+    else lineField(label);
+  });
+  if (def.fields.some(f => f.k === 'retraining')) { need(7.5); const mid = mL + cw / 2; fill('Supervisor:', mL, mid - 4); let x = mid + lbl('Retraining needed:', mid, y) + 2; doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); ['Yes', 'No'].forEach(o => { box(x, y); doc.text(o, x + 4.2, y); x += 14; }); y += 7.5; }
+  else lineField('Supervisor:');
+  { need(7.5); const w = lbl('Line Manager:', mL, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.text(LINE_MANAGER, mL + w, y); y += 7.5; }
+  // signatures: empty boxes to sign, name and date lines
+  const sw = 70, sh = 18, midX = mL + cw / 2;
+  const sigBlock = (x, title) => {
+    lbl(title, x, y);
+    rule(x, x + sw, y + sh + 4);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(0, 0, 0);
+    doc.text('Name: ______________________', x, y + sh + 9);
+    doc.text('Date: ___________', x, y + sh + 14);
+  };
+  need(52);
+  const sy = y;
+  if (def.mgr) {
+    // three side by side: supervisor, employee, line manager
+    const w3 = (cw - 8) / 3;
+    [['Supervisor Signature:', mL], ['Employee Acknowledgment:', mL + w3 + 4], ['Line Manager Signature:', mL + 2 * (w3 + 4)]].forEach(a => {
+      lbl(a[0], a[1], y); rule(a[1], a[1] + w3, y + sh + 4);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      doc.text('Name: ____________________', a[1], y + sh + 9); doc.text('Date: ___________', a[1], y + sh + 14);
+    });
+  } else {
+    sigBlock(mL, 'Supervisor Signature:');
+    sigBlock(midX, 'Employee Acknowledgment:');
+  }
+  y = sy + sh + 21;
+  { need(7.5); box(mL, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text('Employee declined / was unable to sign.   Witness: ______________________________', mL + 4.2, y); y += 7.5; }
+  if (def.attest) {
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(0, 0, 0);
+    doc.splitTextToSize(def.attest, cw).forEach(t => { need(4); doc.text(t, mL, y); y += 3.8; });
+  }
+  doc.__endY = y;
   footer();
   return doc;
 }
