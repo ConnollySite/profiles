@@ -1027,6 +1027,7 @@ function buildBlankPdf(type) {
   const tas = def.fields.filter(f => f.t === 'textarea' && !f.def);
   const base = {};
   tas.forEach(f => { base[f.k] = /aggressor|witnesses|injury/.test(f.k) || (f.k === 'comments' && type !== 'PROBATION') ? 2 : 3; });
+  if (type === 'COUNSELING') base.concern = 4;   // one more line for the details
   // add writing lines one at a time, round the boxes, while the form keeps the same number of pages:
   // every page ends up full (two-page forms are spread over both pages)
   let doc = drawBlankPdf(type, base);
@@ -1126,7 +1127,7 @@ function drawBlankPdf(type, nLines) {
   else lineField('Supervisor:');
   { need(7.5); const w = lbl('Line Manager:', mL, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.text(LINE_MANAGER, mL + w, y); y += 7.5; }
   // signatures: empty boxes to sign, name and date lines
-  const sw = 70, sh = 18, midX = mL + cw / 2;
+  const sw = 70, sh = type === 'COUNSELING' ? 11 : 18, midX = mL + cw / 2;
   const sigBlock = (x, title) => {
     lbl(title, x, y);
     rule(x, x + sw, y + sh + 4);
@@ -1134,7 +1135,7 @@ function drawBlankPdf(type, nLines) {
     doc.text('Name: ______________________', x, y + sh + 9);
     doc.text('Date: ___________', x, y + sh + 14);
   };
-  need(52);
+  need(sh + 21);
   const sy = y;
   if (def.mgr) {
     // three side by side: supervisor, employee, line manager
