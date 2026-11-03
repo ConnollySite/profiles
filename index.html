@@ -413,6 +413,7 @@ function render() {
   if (top.view === 'entry') return renderEntry(app, top.p);
   if (top.view === 'employee') return renderEmployeeEdit(app, top.p);
   if (top.view === 'import') return renderImport(app);
+  if (top.view === 'pts') return renderPts(app, top.p);
 }
 
 
@@ -435,7 +436,7 @@ function renderFormsTab(app) {
     h += '<div class="card"><h2>Latest documents</h2>' + (docs.length ? '<div class="tl">' + docs.map(x => entryItem(x, true)).join('') + '</div>' : '<div class="empty">No documents yet.</div>') + '</div>';
   }
   const newCard = '<div class="card"><h2>New form</h2>' + (formsEmp ? '' : '<div class="hint" style="margin:0 0 8px">Choose the person above first.</div>') + '<div class="grid2">' + TYPE_ORDER.filter(t => t !== 'NOTE').map(t => '<button class="btn ghost" data-new="' + t + '" style="font-size:13.5px' + (formsEmp ? '' : ';opacity:.5') + '">' + esc(FORMS[t].label) + '</button>').join('') + '</div></div>';
-  const blankCard = '<div class="card"><h2>Blank forms to print</h2><div class="hint" style="margin:0 0 8px">Empty form to fill in by hand. No employee needed.</div><div class="grid2">' + TYPE_ORDER.filter(t => FORMS[t].pdf).map(t => '<button class="btn ghost" data-blank="' + t + '" style="font-size:13.5px">🖨 ' + esc(FORMS[t].label) + '</button>').join('') + '</div></div>';
+  const blankCard = '<div class="card"><h2>Blank forms to print</h2><div class="hint" style="margin:0 0 8px">Empty form to fill in by hand. No employee needed.</div><div class="grid2">' + TYPE_ORDER.filter(t => FORMS[t].pdf).map(t => '<button class="btn ghost" data-blank="' + t + '" style="font-size:13.5px">🖨 ' + esc(FORMS[t].label) + '</button>').join('') + '<button class="btn ghost" id="ptsBlank" style="font-size:13.5px">🖨 Irish Rail PTS application</button></div></div>';
   const cut = h.indexOf('</div></div>') + 12; h = h.slice(0, cut) + newCard + blankCard + h.slice(cut);
   app.innerHTML = h;
   bindItems(app);
@@ -443,6 +444,7 @@ function renderFormsTab(app) {
   who();
   $('fmEmp').onchange = () => { formsEmp = $('fmEmp').value; renderFormsTab(app); };
   $('fmQ').oninput = () => { formsQ = $('fmQ').value; const pos = $('fmQ').selectionStart; renderFormsTab(app); const n = $('fmQ'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (er) {} };
+  $('ptsBlank').onclick = () => ptsBuild(null).catch(err => toast('Could not make the PDF: ' + err.message, 4000));
   [].forEach.call(app.querySelectorAll('[data-blank]'), b => { b.onclick = () => {
     const t = b.getAttribute('data-blank');
     try { buildBlankPdf(t).save('Blank_' + FORMS[t].label.replace(/[^a-z0-9]+/gi, '_') + '.pdf'); toast('Blank form saved — open it to print'); }
@@ -1159,6 +1161,99 @@ function drawBlankPdf(type, nLines) {
   footer();
   return doc;
 }
+/* ================= Irish Rail PTS course application =================
+   The official 2-page form (pts_template.pdf, next to this page) with the applicant's details, category,
+   photo, signature and date written on page 2. Page 1 (company details) is already filled in the template.
+   Nothing is stored: the PDF is made on the phone to send to contractor.pts@irishrail.ie. */
+const PTS_CATS = [['initial', 'Initial training'], ['refresher', 'Refresher / repeat'], ['extension', 'Certification extension'], ['reissue', 'Certificate reissue']];
+let ptsPhoto = '';
+function renderPts(app, p) {
+  const emp = p.empId ? empById(p.empId) : null;
+  setHeader('PTS application', 'Irish Rail contractor PTS course', true);
+  ptsPhoto = '';
+  app.innerHTML = '<div class="card"><h2>Applicant</h2>' +
+    '<div class="field"><label>Name</label><input type="text" id="ptName" value="' + esc(emp ? dispName(emp) : '') + '" autocomplete="off"></div>' +
+    '<div class="field"><label>Date of birth</label><input type="date" id="ptDob"></div>' +
+    '<div class="field"><label>Email address</label><input type="text" inputmode="email" id="ptEmail" autocomplete="off" autocapitalize="off"></div>' +
+    '<div class="field"><label>Contact phone number</label><input type="text" inputmode="tel" id="ptPhone" autocomplete="off"></div>' +
+    '<div class="field"><label>Sponsoring company</label><input type="text" id="ptCo" value="BIDVEST NOONAN"></div>' +
+    '<div class="field"><label>Category</label><div class="seg">' + PTS_CATS.map((c, i) => '<label><input type="radio" name="ptCat" value="' + c[0] + '"' + (i === 0 ? ' checked' : '') + '><span>' + esc(c[1]) + '</span></label>').join('') + '</div></div>' +
+    '<div class="field"><label>Photograph <span class="hint">optional — when required</span></label><div class="row" style="flex-wrap:wrap"><button class="btn small ghost" id="ptPhotoBtn" type="button" style="flex:none">Take / choose photo</button><button class="btn small ghost hidden" id="ptPhotoRm" type="button" style="flex:none">Remove</button></div><input type="file" id="ptPhotoFile" accept="image/*" capture="user" style="display:none"><div id="ptPhotoPrev" style="margin-top:8px"></div></div>' +
+    '<div class="field"><label>Date</label><input type="date" id="ptDate" value="' + todayStr() + '"></div></div>' +
+    '<div class="card"><h2>Applicant signature (privacy consent)</h2><div class="sig-shell"><canvas id="ptsCv"></canvas><div class="sig-ph" id="ptsPh">Hand the phone to the applicant to sign with a finger</div></div><div class="row" style="margin-top:10px"><span class="hint" style="margin:0">Optional — leave empty to sign on paper</span><button class="btn small ghost" id="ptsClear" type="button" style="flex:none">Clear</button></div></div>' +
+    '<button class="btn" id="ptMake">Make the PDF</button><div class="sync" style="margin-top:8px">Nothing is saved in Profiles. Send the PDF to contractor.pts@irishrail.ie with the documents the category asks for.</div>';
+  pads = {}; makePad('pts');
+  $('ptPhotoBtn').onclick = () => $('ptPhotoFile').click();
+  $('ptPhotoRm').onclick = () => { ptsPhoto = ''; $('ptPhotoPrev').innerHTML = ''; $('ptPhotoRm').classList.add('hidden'); };
+  $('ptPhotoFile').onchange = ev => {
+    const f = ev.target.files && ev.target.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => { const im = new Image(); im.onload = () => {
+      const k = Math.min(1, 900 / Math.max(im.width, im.height)), c = document.createElement('canvas');
+      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      ptsPhoto = c.toDataURL('image/jpeg', 0.85);
+      $('ptPhotoPrev').innerHTML = '<img src="' + ptsPhoto + '" style="max-height:120px;border-radius:8px;border:1px solid var(--line)">'; $('ptPhotoRm').classList.remove('hidden');
+    }; im.src = rd.result; };
+    rd.readAsDataURL(f); ev.target.value = '';
+  };
+  $('ptMake').onclick = () => {
+    const d = { name: $('ptName').value.trim(), dob: $('ptDob').value, email: $('ptEmail').value.trim(), phone: $('ptPhone').value.trim(), co: $('ptCo').value.trim(),
+      cat: (document.querySelector('input[name=ptCat]:checked') || {}).value, date: $('ptDate').value, photo: ptsPhoto, sig: pads.pts && !pads.pts.empty() ? pads.pts.cv.toDataURL('image/png') : '' };
+    if (!d.name) { toast('Write the name'); return; }
+    $('ptMake').disabled = true; $('ptMake').textContent = 'Making the PDF…';
+    ptsBuild(d).catch(err => toast('Could not make the PDF: ' + err.message, 4000)).then(() => { $('ptMake').disabled = false; $('ptMake').textContent = 'Make the PDF'; });
+  };
+}
+function loadScriptOnce(src, test) {
+  if (test()) return Promise.resolve();
+  return new Promise((ok, bad) => { const s = document.createElement('script'); s.src = src; s.onload = () => ok(); s.onerror = () => bad(new Error('no connection')); document.head.appendChild(s); });
+}
+const ptsDmy = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? [m[3], m[2], m[1]] : ['', '', '']; };
+async function ptsBuild(d) {
+  if (d) await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js', () => !!window.PDFLib);
+  const res = await fetch('pts_template.pdf?v=1', { cache: 'no-cache' });
+  if (!res.ok) throw new Error('the form file (pts_template.pdf) is not on the site');
+  const bytes = await res.arrayBuffer();
+  const name = d ? 'PTS_application_' + d.name.replace(/[^a-z0-9]+/gi, '_') + '.pdf' : 'PTS_application_blank.pdf';
+  let out = bytes;
+  if (d) {
+    const L = window.PDFLib, pdf = await L.PDFDocument.load(bytes), pg = pdf.getPages()[1], H = pg.getHeight();
+    const font = await pdf.embedFont(L.StandardFonts.Helvetica), bold = await pdf.embedFont(L.StandardFonts.HelveticaBold);
+    const ink = L.rgb(0.05, 0.1, 0.25);
+    // positions in points from the top-left of page 2 (measured on the official form V.5.2)
+    const txt = (t, x, yTop, size, f, maxW) => {
+      t = String(t || ''); if (!t) return; size = size || 10.5; f = f || font;
+      while (maxW && size > 6 && f.widthOfTextAtSize(t, size) > maxW) size -= 0.5;
+      pg.drawText(t, { x: x, y: H - yTop, size: size, font: f, color: ink });
+    };
+    txt(d.name.toUpperCase(), 216, 85, 11, bold, 330);
+    const b = ptsDmy(d.dob); txt(b[0], 268, 111); txt(b[1], 306, 111); txt(b[2], 344, 111);
+    txt(d.email, 264, 138, 10.5, font, 285);
+    txt(d.phone, 310, 167, 10.5, font, 240);
+    txt(d.co.toUpperCase(), 300, 197, 10.5, font, 250);
+    const rowY = { initial: 260, refresher: 341, extension: 470, reissue: 560 }[d.cat];
+    if (rowY) { pg.drawLine({ start: { x: 243, y: H - rowY }, end: { x: 247.5, y: H - rowY - 5 }, thickness: 1.8, color: ink }); pg.drawLine({ start: { x: 247.5, y: H - rowY - 5 }, end: { x: 256, y: H - rowY + 6 }, thickness: 1.8, color: ink }); }
+    if (d.photo) {
+      const img = await pdf.embedJpg(d.photo), bx = 42, byTop = 52, bw = 124, bh = 154;
+      const k = Math.min(bw / img.width, bh / img.height), w = img.width * k, h = img.height * k;
+      pg.drawImage(img, { x: bx + (bw - w) / 2, y: H - byTop - (bh + h) / 2, width: w, height: h });
+    }
+    if (d.sig) {
+      const img = await pdf.embedPng(d.sig), k = Math.min(200 / img.width, 34 / img.height);
+      pg.drawImage(img, { x: 100, y: H - 724, width: img.width * k, height: img.height * k });
+    }
+    const t = ptsDmy(d.date); txt(t[0], 80, 745); txt(t[1], 116, 745); txt(t[2], 154, 745);
+    out = await pdf.save();
+  }
+  const blob = new Blob([out], { type: 'application/pdf' }), file = new File([blob], name, { type: 'application/pdf' });
+  if (d && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'PTS application', text: 'IE Contractor PTS course application — ' + d.name }); return; }
+    catch (err) { if (err.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  toast('PDF saved to this phone');
+}
+
 let lastDoc = null;
 let sheetFromForm = false;
 function showPdfSheet(def, e, uploaded, fromForm) {
