@@ -188,6 +188,8 @@
   .entry-actions{display:flex;gap:14px;}
   .entry-actions span{cursor:pointer;color:var(--blue-deep);font-weight:800;}
   .entry-actions span.del{color:var(--red);}
+  #viewChips .chip.active{background:var(--blue-deep);border-color:var(--blue-deep);}
+  .shared-badge{font-size:10px;font-weight:800;color:#5B6B84;border:1px solid #c9d2df;border-radius:6px;padding:1px 6px;}
   .empty-state{text-align:center;padding:34px 12px;color:var(--sub);}
   .empty-state .big{font-size:32px;margin-bottom:8px;}
   .empty-state p{font-size:13.5px;margin:4px 0 0;}
@@ -325,6 +327,11 @@
       <select id="filterTeamSelect"><option value="all">All Teams</option></select>
     </div>
 
+    <div class="chip-row" id="viewChips" style="margin-top:10px;">
+      <div class="chip" data-view="shared">👥 Last 7 days · both supervisors</div>
+      <div class="chip" data-view="mine">📱 All on this phone</div>
+    </div>
+    <div id="sharedState" style="font-size:11px;color:var(--muted,#5B6B84);margin-top:6px"></div>
     <div id="board"></div>
   </div>
 
@@ -418,6 +425,8 @@ const LS_LAST_SUPERVISOR = 'checkpoints_lastSupervisor_v1';
 const LS_PROFILES = 'checkpoints_profiles_v1';
 const LS_PROFILE_NAMES = 'checkpoints_profile_names_v1';
 const LS_DELETED = 'checkpoints_deleted_v1';
+const LS_SHARED = 'checkpoints_shared_v1';     // last 7 days from Profiles (both supervisors)
+const LS_VIEW = 'checkpoints_view_v1';
 
 let entries = [];
 let customEmployees = [];
@@ -807,8 +816,19 @@ function renderBoard(){
   totalCount.textContent = entries.length;
   const q = searchInput.value.trim().toLowerCase();
   const teamFilter = filterTeamSelect.value;
+  const view = boardView();
+  document.querySelectorAll('#viewChips .chip').forEach(c => c.classList.toggle('active', c.dataset.view === view));
 
-  let list = entries.slice();
+  let list;
+  if(view === 'shared'){
+    // the last 7 days: notes on this phone + notes from Profiles (both supervisors), each note once
+    const from = daysAgoStr(6);
+    const mine = entries.filter(e => e.date >= from);
+    const ids = new Set(mine.map(e => e.id));
+    const dead = new Set(getTombstones());
+    const others = loadShared().filter(e => e.date >= from && !ids.has(e.id) && !dead.has(e.id));
+    list = mine.concat(others);
+  } else list = entries.slice();
   if(filterType !== 'all') list = list.filter(e => (e.type||'fault') === filterType);
   if(filterCategory !== 'all') list = list.filter(e => e.category === filterCategory);
   if(teamFilter !== 'all') list = list.filter(e => (e.teams||[]).includes(teamFilter));
@@ -825,7 +845,7 @@ function renderBoard(){
 
   if(list.length === 0){
     board.innerHTML = `<div class="empty-state"><div class="big">🗒️</div>
-      <p>${entries.length===0 ? 'No logs yet — save your first note above.' : 'No logs match your search.'}</p></div>`;
+      <p>${view==='shared' && !q ? 'No logs in the last 7 days.' : entries.length===0 && view!=='shared' ? 'No logs yet — save your first note above.' : 'No logs match your search.'}</p></div>`;
     return;
   }
 
@@ -852,10 +872,10 @@ function renderBoard(){
         <div class="entry-text">${renderNoteHtml(e.text)}</div>
         <div class="entry-meta">
           <span>${e.date}</span>
-          <div class="entry-actions">
+          ${e.shared ? `<span class="shared-badge" title="Written on another phone or in Profiles. Edit it there.">shared</span>` : `<div class="entry-actions">
             <span class="edit" data-id="${e.id}">Edit</span>
             <span class="del" data-id="${e.id}">Delete</span>
-          </div>
+          </div>`}
         </div>
       </div>`;
   }
@@ -1309,6 +1329,48 @@ document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncPro
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncProfiles(true); });
 
 /* ==========================================================
+   SHARED LIST — last 7 days of notes from both supervisors (from Profiles)
+   ========================================================== */
+function daysAgoStr(n){ const d = new Date(); d.setDate(d.getDate()-n); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function loadShared(){ try{ return JSON.parse(localStorage.getItem(LS_SHARED) || '{"notes":[]}').notes || []; }catch(e){ return []; } }
+function boardView(){ try{ return localStorage.getItem(LS_VIEW) || 'shared'; }catch(e){ return 'shared'; } }
+document.getElementById('viewChips').addEventListener('click', (ev)=>{
+  const c = ev.target.closest('.chip'); if(!c) return;
+  try{ localStorage.setItem(LS_VIEW, c.dataset.view); }catch(e){}
+  renderBoard();
+});
+function sharedStateText(){
+  const el = document.getElementById('sharedState'); if(!el) return;
+  if(!loadLink()){ el.textContent = 'Connect to Profiles (⚙) to see the notes of both supervisors.'; return; }
+  let at = ''; try{ at = JSON.parse(localStorage.getItem(LS_SHARED) || '{}').at || ''; }catch(e){}
+  el.textContent = at ? ('Shared list updated ' + new Date(at).toLocaleTimeString('en-IE',{hour:'2-digit',minute:'2-digit'})) : 'Loading the shared list…';
+}
+let sharedBusy = false;
+async function loadSharedNotes(){
+  const link = loadLink();
+  sharedStateText();
+  if(!link || sharedBusy || !navigator.onLine) return;
+  sharedBusy = true;
+  try{
+    const r = await profilesCall(link, { action:'recentNotes', days:7 });
+    if(r && r.ok && Array.isArray(r.notes)){
+      const notes = r.notes.map(n => ({ id:n.id, date:n.date, time:n.time||'', type:n.kind==='positive'?'positive':'fault', employees:n.employees||[], teams:n.teams||[], category:n.category||'', supervisor:n.author||'', text:n.text||'', shared:true }));
+      localStorage.setItem(LS_SHARED, JSON.stringify({ at: new Date().toISOString(), notes }));
+      renderBoard();
+    } else if(r && r.error && /Unknown action/.test(r.error)){
+      const el = document.getElementById('sharedState'); if(el) el.textContent = 'The shared list needs the Profiles update (Apps Script) first.';
+      sharedBusy = false; return;
+    }
+  }catch(e){}
+  sharedBusy = false;
+  sharedStateText();
+}
+// after every sync with Profiles, and every 2 minutes while open
+const _syncProfiles = syncProfiles;
+syncProfiles = async function(quiet){ await _syncProfiles(quiet); await loadSharedNotes(); };
+setInterval(()=>{ if(!document.hidden) loadSharedNotes(); }, 120000);
+
+/* ==========================================================
    INIT
    ========================================================== */
 loadAll();
@@ -1321,6 +1383,7 @@ setNow();
 supervisorSelect.value = localStorage.getItem(LS_LAST_SUPERVISOR) || '';
 renderBoard();
 renderProfilesUi();
+sharedStateText();
 syncProfiles(true);
 </script>
 </body>
