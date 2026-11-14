@@ -35,6 +35,8 @@
   select,input[type=text],input[type=date],input[type=time],input[type=password],input[type=number],input[type=search],textarea{width:100%;font-family:inherit;font-size:15.5px;color:var(--ink);background:#F8FAFC;border:1.5px solid var(--line);border-radius:10px;padding:12px;appearance:none;-webkit-appearance:none;}
   select:focus,input:focus,textarea:focus{outline:none;border-color:var(--blue);background:#fff;}
   textarea{resize:vertical;min-height:84px;line-height:1.4;}
+  textarea[data-k]{min-height:170px;font-size:15px;}          /* form text boxes: big, and they grow with the text */
+  @media (min-width:900px){ .wrap{max-width:860px;} }          /* wider on a computer */
   select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'><path d='M1 1l6 6 6-6' stroke='%235B6B84' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;}
   .btn{display:block;width:100%;border:none;border-radius:12px;padding:14px;font:inherit;font-weight:800;font-size:15px;cursor:pointer;background:linear-gradient(135deg,var(--blue),var(--blue-deep));color:#fff;box-shadow:0 6px 16px rgba(0,119,173,.28);}
   .btn:active{transform:translateY(1px);}
@@ -1283,6 +1285,16 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && S.
 loadCache();
 render();
 if (S.cred && S.url) refresh(true);
+</script>
+<script>
+// Text boxes grow with what is written, so the whole text is visible without scrolling inside the box
+(function () {
+  function fit(t) { if (!t || t.tagName !== 'TEXTAREA') return; t.style.height = 'auto'; t.style.height = Math.max(t.scrollHeight + 4, t.tagName && t.hasAttribute('data-k') ? 170 : 84) + 'px'; }
+  document.addEventListener('input', function (e) { fit(e.target); });
+  function fitAll() { Array.prototype.forEach.call(document.querySelectorAll('textarea'), function (t) { if (t.offsetParent) fit(t); }); }
+  new MutationObserver(function () { clearTimeout(fitAll.t); fitAll.t = setTimeout(fitAll, 60); }).observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('resize', fitAll);
+})();
 </script>
 </body>
 </html>
