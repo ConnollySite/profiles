@@ -699,7 +699,18 @@ function resetComposer(){
   saveBtn.textContent = 'Save Check Point';
 }
 
+// a note from the shared list (written on another phone): bring it onto this phone so it can be edited
+function adoptShared(id){
+  if(entries.find(x=>x.id===id)) return true;
+  const sh = loadShared().find(x=>x.id===id);
+  if(!sh) return false;
+  const copy = Object.assign({}, sh); delete copy.shared; delete copy.source;
+  copy.createdAt = copy.updatedAt = 'shared'; copy.sync = 'shared';   // same as Profiles until you change it
+  entries.push(copy); saveEntries();
+  return true;
+}
 function startEdit(id){
+  adoptShared(id);
   const e = entries.find(x=>x.id===id);
   if(!e) return;
   editingId = id;
@@ -752,6 +763,7 @@ saveBtn.addEventListener('click', ()=>{
 
 function deleteEntry(id){
   if(!confirm('Delete this entry? This cannot be undone.')) return;
+  adoptShared(id);
   const gone = entries.find(e=>e.id===id);
   if(gone && gone.sync) addTombstone(id);
   entries = entries.filter(e=>e.id!==id);
@@ -872,7 +884,7 @@ function renderBoard(){
         <div class="entry-text">${renderNoteHtml(e.text)}</div>
         <div class="entry-meta">
           <span>${e.date}</span>
-          ${e.shared ? `<span class="shared-badge" title="Written on another phone or in Profiles. Edit it there.">shared</span>` : `<div class="entry-actions">
+          ${e.shared && e.source !== 'checkpoints' ? `<span class="shared-badge" title="Written in Profiles. Edit it there.">Profiles</span>` : `${e.shared ? '<span class="shared-badge" title="Written on another phone">shared</span> ' : ''}<div class="entry-actions">
             <span class="edit" data-id="${e.id}">Edit</span>
             <span class="del" data-id="${e.id}">Delete</span>
           </div>`}
@@ -1354,7 +1366,7 @@ async function loadSharedNotes(){
   try{
     const r = await profilesCall(link, { action:'recentNotes', days:7 });
     if(r && r.ok && Array.isArray(r.notes)){
-      const notes = r.notes.map(n => ({ id:n.id, date:n.date, time:n.time||'', type:n.kind==='positive'?'positive':'fault', employees:n.employees||[], teams:n.teams||[], category:n.category||'', supervisor:n.author||'', text:n.text||'', shared:true }));
+      const notes = r.notes.map(n => ({ source:n.source||'', id:n.id, date:n.date, time:n.time||'', type:n.kind==='positive'?'positive':'fault', employees:n.employees||[], teams:n.teams||[], category:n.category||'', supervisor:n.author||'', text:n.text||'', shared:true }));
       localStorage.setItem(LS_SHARED, JSON.stringify({ at: new Date().toISOString(), notes }));
       renderBoard();
     } else if(r && r.error && /Unknown action/.test(r.error)){
