@@ -1440,9 +1440,10 @@ async function srBuild(){
   doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(110,120,140); doc.text(sup, mL, y + 26);
   const ds = srDMY(srISO(new Date())); doc.text(ds, mL + 70 - doc.getTextWidth(ds), y + 26);
   footer();
-  const safe = who.split(',')[0].replace(/[^A-Za-z0-9]+/g, '_');
+  const safe = ((e.employees||[]).join(' & ') || 'Staff').replace(/[^A-Za-z0-9&' -]+/g, ' ').replace(/\s+/g, ' ').trim();
   srCur.no = no; srCur.doc = doc; srCur.sup = sup; srCur.who = who;
-  srCur.name = no + '_Supervisor_Report_' + safe + '_' + e.date + '.pdf';
+  srCur.name = safe + ' - Supervisor Report ' + no + ' - ' + srDMY(e.date).replace(/\//g, '-') + '.pdf';   // staff name first
+  doc.setProperties({ title: safe + ' - Supervisor Report ' + no });
   return srCur;
 }
 document.getElementById('srPdf').addEventListener('click', async ()=>{ const r = await srBuild(); if(r){ r.doc.save(r.name); toast('Saved ' + r.no); openReport(r.entry.id); srCur = r; } });
