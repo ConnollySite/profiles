@@ -86,6 +86,7 @@
   }
   textarea:focus, select:focus, input:focus{outline:none;border-color:var(--blue);background:#fff;}
   textarea{resize:vertical;min-height:76px;line-height:1.4;}
+  #noteText{min-height:calc(10 * 1.4em + 26px);}   /* at least 10 lines visible; grows with the text */
   .dictate-row{display:flex;justify-content:flex-end;margin-top:7px;}
   .dictate-btn{
     display:inline-flex;align-items:center;justify-content:center;gap:6px;
@@ -1365,8 +1366,9 @@ const LOGO_PDF = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAZUAAAB5CAIAAAB+
 const LOGO_ASPECT = 405 / 121;
 
 // Who gets the email. Type the addresses here once.
-const REPORT_TO = ['', ''];                       // manager, senior manager
-const REPORT_CC = { 'Leandro Rocha': [], 'Jack Lydon': [] };   // extra copies, by who is sending (optional)
+const REPORT_TO = ['witold.fender@bidvestnoonan.com'];          // line manager
+const REPORT_CC = ['niall.oshea@bidvestnoonan.com'];             // senior manager, always in copy
+const SUPERVISOR_EMAILS = { 'Leandro Rocha': 'leandro.darocha@bidvestnoonan.com', 'Jack Lydon': 'jack.lydon@bidvestnoonan.com' };   // the other supervisor goes in copy
 const REPORT_LINE_MANAGER = 'Witold Fender';
 const REPORT_SITE = 'Connolly';
 const LS_REPNO = 'checkpoints_report_nos_v1';    // the same log keeps the same number
@@ -1448,9 +1450,11 @@ document.getElementById('srMail').addEventListener('click', async ()=>{
   const r = await srBuild(); if(!r) return;
   r.doc.save(r.name);
   const e = r.entry;
-  const to = REPORT_TO.filter(Boolean), cc = (REPORT_CC[r.sup] || []).filter(Boolean);
+  const link = loadLink(), me = (link && link.user) || r.sup;   // who is sending: the one logged in on this phone
+  const to = REPORT_TO.filter(Boolean);
+  const cc = REPORT_CC.concat(Object.keys(SUPERVISOR_EMAILS).filter(n => n !== me).map(n => SUPERVISOR_EMAILS[n])).filter(Boolean);
   const subject = 'Supervisor Report ' + r.no + ' – ' + r.who + ' – ' + srDMY(e.date);
-  const body = 'Hello,\n\nPlease find attached the supervisor report ' + r.no + ' regarding ' + r.who + ' on ' + srDMY(e.date) + (e.time ? ' at ' + e.time : '') + ' (' + (e.category || '') + ').\n\n' + srText(e.text) + '\n\nAttachment: ' + r.name + '\n\nKind regards,\n' + r.sup;
+  const body = 'Hello,\n\nPlease find attached the supervisor report ' + r.no + ' regarding ' + r.who + ' on ' + srDMY(e.date) + (e.time ? ' at ' + e.time : '') + ' (' + (e.category || '') + ').\n\n' + srText(e.text) + '\n\nAttachment: ' + r.name + '\n\nKind regards,\n' + me;
   setTimeout(()=>{ location.href = 'mailto:' + to.map(encodeURIComponent).join(';') + '?' + (cc.length ? 'cc=' + cc.map(encodeURIComponent).join(';') + '&' : '') + 'subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body); }, 600);
   toast('PDF downloaded — attach it to the email');
 });
@@ -1518,6 +1522,16 @@ renderBoard();
 renderProfilesUi();
 sharedStateText();
 syncProfiles(true);
+</script>
+<script>
+// the note box grows with the text (it always shows at least 10 lines)
+(function(){ var t=document.getElementById('noteText'); if(!t) return;
+  function fit(){ t.style.height='auto'; t.style.height=(t.scrollHeight+2)+'px'; }
+  t.addEventListener('input', fit);
+  var v=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value');   // also when Edit fills the box or Save clears it
+  Object.defineProperty(t,'value',{get:function(){return v.get.call(t);},set:function(x){v.set.call(t,x);setTimeout(fit,0);}});
+  setTimeout(fit,300);
+})();
 </script>
 </body>
 </html>
